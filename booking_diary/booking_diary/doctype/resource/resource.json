@@ -9,7 +9,8 @@
   "resource_name",
   "resource_type",
   "description",
-  "available"
+  "available",
+  "time_zone"
  ],
  "fields": [
   {
@@ -37,12 +38,18 @@
    "fieldname": "available",
    "fieldtype": "Check",
    "label": "Available"
+  },
+  {
+   "default": "Asia/Kolkata",
+   "fieldname": "time_zone",
+   "fieldtype": "Data",
+   "label": "Time Zone"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-08 10:59:56.421380",
+ "modified": "2026-10-09 15:06:26.394543",
  "modified_by": "Administrator",
  "module": "Booking Diary",
  "name": "Resource",

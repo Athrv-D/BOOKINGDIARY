@@ -1,0 +1,64 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-10-09 13:23:57.268547",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "resource",
+  "blackout_date",
+  "reason",
+  "applies_globally"
+ ],
+ "fields": [
+  {
+   "fieldname": "resource",
+   "fieldtype": "Link",
+   "label": "Resource",
+   "options": "Resource"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason"
+  },
+  {
+   "default": "0",
+   "fieldname": "applies_globally",
+   "fieldtype": "Check",
+   "label": "Applies Globally"
+  },
+  {
+   "fieldname": "blackout_date",
+   "fieldtype": "Date",
+   "label": "Date"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-10-09 13:47:57.822796",
+ "modified_by": "Administrator",
+ "module": "Booking Diary",
+ "name": "Blackout Date",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

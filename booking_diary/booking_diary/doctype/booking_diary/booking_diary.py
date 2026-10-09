@@ -6,12 +6,83 @@ class BookingDiary(Document):
 
     def validate(self):
         self.validate_time()
+        self.validate_future_booking()
+        self.validate_blackout()
         self.validate_availability()
         self.validate_conflict()
 
     def validate_time(self):
         if self.start_time >= self.end_time:
             frappe.throw("End Time must be after Start Time.")
+
+    
+     
+    def validate_future_booking(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        booking_date = frappe.utils.getdate(self.booking_date)
+
+        resource_timezone = frappe.db.get_value(
+            "Resource",
+            self.resource,
+            "time_zone",
+        )
+
+        if not resource_timezone:
+            frappe.throw(
+                f"Please set a Time Zone for resource {self.resource}."
+            )
+
+        try:
+            timezone = ZoneInfo(resource_timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            frappe.throw(
+                f"Invalid time zone '{resource_timezone}' "
+                f"configured for resource {self.resource}."
+            )
+
+        current_datetime = datetime.now(timezone)
+
+        booking_start = datetime.combine(
+            booking_date,
+            frappe.utils.get_time(self.start_time),
+        ).replace(tzinfo=timezone)
+
+        if booking_start <= current_datetime:
+            frappe.throw(
+                f"Cannot book a time that has already passed "
+                f"in the resource's time zone ({resource_timezone})."
+            )
+
+
+    
+    def validate_blackout(self):
+        blackouts = frappe.get_all(
+        "Blackout Date",
+        filters={
+            "blackout_date": self.booking_date,
+        },
+        fields=[
+            "resource",
+            "reason",
+            "applies_globally",
+        ],
+    )
+
+        for blackout in blackouts:
+         if (
+            blackout.applies_globally
+            or blackout.resource == self.resource
+        ):
+            reason = blackout.reason or "No reason provided"
+
+            frappe.throw(
+                f"Cannot create booking for {self.resource} "
+                f"on {self.booking_date}. "
+                f"Reason: {reason}"
+            )
+
 
     def validate_availability(self):
         day_name = frappe.utils.getdate(
@@ -66,7 +137,7 @@ class BookingDiary(Document):
             WHERE resource = %s
               AND booking_date = %s
               AND name != %s
-              AND status NOT IN ('Cancelled')
+              AND status NOT IN ('Cancelled', 'Draft', 'No Show', 'Completed')
               AND start_time < %s
               AND end_time > %s
             """,

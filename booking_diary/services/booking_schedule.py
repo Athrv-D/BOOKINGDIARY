@@ -1,5 +1,5 @@
 import frappe
-from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 DEFAULT_SLOT_DURATION = 30
@@ -22,6 +22,33 @@ def minutes_to_time(minutes):
     return f"{hours:02d}:{mins:02d}:00"
 
 
+def convert_resource_time(
+    booking_date,
+    booking_time,
+    resource_timezone,
+    user_timezone,
+):
+    """Convert a resource-local date/time to the user's timezone."""
+
+    try:
+        source_timezone = ZoneInfo(resource_timezone)
+        target_timezone = ZoneInfo(user_timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        frappe.throw("Invalid resource or user timezone.")
+
+    local_date = frappe.utils.getdate(booking_date)
+    local_time = frappe.utils.get_time(booking_time)
+
+    resource_datetime = datetime.combine(
+        local_date,
+        local_time,
+        tzinfo=source_timezone,
+    )
+
+    return resource_datetime.astimezone(target_timezone)
+
+
+
 def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DURATION):
     """
     Generate the complete schedule for one resource on one date.
@@ -30,6 +57,46 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
     """
 
     day_name = frappe.utils.getdate(booking_date).strftime("%A")
+    blackout_filters = {
+        "blackout_date": booking_date,
+    }
+    resource_timezone = frappe.db.get_value(
+    "Resource",
+    resource,
+    "time_zone",
+)
+
+    blackouts = frappe.get_all(
+        "Blackout Date",
+        filters=blackout_filters,
+        fields=[
+            "resource",
+            "reason",
+            "applies_globally",
+        ],
+    )
+
+    applicable_blackout = next(
+        (
+            blackout
+            for blackout in blackouts
+            if blackout.applies_globally
+            or blackout.resource == resource
+        ),
+        None,
+    )
+
+    if applicable_blackout:
+        return {
+            "resource": resource,
+            "date": str(booking_date),
+            "day": day_name,
+            "slots": [],
+            "bookings": [],
+            "is_blackout": True,
+            "blackout_reason": applicable_blackout.reason,
+            "time_zone":resource_timezone
+        }
 
     # Get all availability periods for this resource/day
     availabilities = frappe.get_all(
@@ -49,7 +116,7 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
         filters={
             "resource": resource,
             "booking_date": booking_date,
-            "status": ["not in", ["Cancelled"]],
+            "status": ["not in", ["Cancelled", "Draft", "No Show", "Completed",]],
         },
         fields=[
             "name",
@@ -72,6 +139,7 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
             "day": day_name,
             "slots": [],
             "bookings": bookings,
+            "time_zone":resource_timezone,
         }
 
     for availability in availabilities:
@@ -138,6 +206,10 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
         "day": day_name,
         "slots": schedule,
         "bookings": bookings,
+        "is_blackout": False,
+        "blackout_reason": None,
+        "time_zone":resource_timezone,
+    
     }
 
 
@@ -149,3 +221,18 @@ def get_schedule(resource, booking_date, slot_duration=30):
         booking_date=booking_date,
         slot_duration=int(slot_duration),
     )
+
+
+@frappe.whitelist()
+def get_user_timezone():
+    """Return the logged-in user's configured timezone."""
+    user_timezone = frappe.db.get_value(
+        "User",
+        frappe.session.user,
+        "time_zone",
+    )
+
+    return user_timezone or frappe.db.get_single_value(
+        "System Settings",
+        "time_zone",
+    ) or "UTC"

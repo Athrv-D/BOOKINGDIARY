@@ -644,6 +644,22 @@ function renderTimeHeader() {
         timeHeader.appendChild(cell);
     }
 }
+
+let userTimeZone = "Asia/Kolkata";
+
+async function getUserTimezone() {
+    const response = await fetch(
+        "/api/method/booking_diary.services.booking_schedule.get_user_timezone"
+    );
+
+    if (!response.ok) {
+        throw new Error("Failed to fetch user timezone.");
+    }
+
+    const result = await response.json();
+    userTimeZone = result.message || "UTC";
+}
+
 async function getResourceSchedule(resource, date) {
     const response = await fetch(
         `/api/method/booking_diary.services.booking_schedule.get_schedule` +
@@ -1081,7 +1097,12 @@ document.querySelectorAll(".bd-tab").forEach(tab => {
     };
 });
 
-render();
+getUserTimezone()
+    .then(() => render())
+    .catch(error => {
+        console.error("Failed to initialize timezone:", error);
+        render();
+    });
 
 })();
 </script>
