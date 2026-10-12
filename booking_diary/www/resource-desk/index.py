@@ -14,6 +14,7 @@ def get_context(context):
             "resource_name",
             "resource_type",
             "available",
+            "time_zone"
         ],
         order_by="resource_name asc",
     )

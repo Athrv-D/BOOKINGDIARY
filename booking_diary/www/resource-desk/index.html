@@ -185,9 +185,22 @@
     .dot-booked { background: #3b82f6; }
     .dot-unavailable { background: #9ca3af; }
 
-    .bd-timeline {
-        overflow-x: auto;
-    }
+    
+.bd-timeline {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    position: relative;
+    scrollbar-gutter: stable;
+}
+
+.bd-timeline .bd-time-header,
+.bd-timeline .bd-schedule-cell {
+    width: 2400px;
+    min-width: 2400px;
+}
+
 
     .bd-grid {
         min-width: 1000px;
@@ -207,20 +220,27 @@
         letter-spacing: .04em;
     }
 
-    .bd-time-header {
-        display: grid;
-        grid-template-columns: repeat(9, 1fr);
-        background: #f8fafc;
-        border-bottom: 1px solid var(--bd-border);
-    }
+ .bd-time-header {
+    display: grid;
+    grid-template-columns: repeat(24, 70px);
+    width: max-content;
+    min-width: 100%;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--bd-border);
+}
 
-    .bd-time-cell {
-        padding: 14px 8px;
-        border-right: 1px solid var(--bd-border);
-        font-size: 11px;
-        color: var(--bd-muted);
-        text-align: center;
-    }
+
+ .bd-time-cell {
+    box-sizing: border-box;
+    width: var(--bd-hour-width);
+    min-width: var(--bd-hour-width);
+    padding: 14px 8px;
+    border-right: 1px solid var(--bd-border);
+    font-size: 11px;
+    color: var(--bd-muted);
+    text-align: center;
+    white-space: nowrap;
+}
 
     .bd-resource-cell {
         min-height: 105px;
@@ -240,20 +260,23 @@
         font-size: 12px;
     }
 
- .bd-schedule-cell {
+
+.bd-schedule-cell {
     position: relative;
     min-height: 105px;
+    min-width: 2400px;
+    width: 2400px;
     border-bottom: 1px solid var(--bd-border);
-
-    background:
-        repeating-linear-gradient(
-            to right,
-            #f3f4f6 0,
-            #f3f4f6 calc(11.111% - 1px),
-            #e5e7eb calc(11.111% - 1px),
-            #e5e7eb 11.111%
-        );
+    background-color: #f3f4f6;
+    background-image: repeating-linear-gradient(
+        to right,
+        transparent 0,
+        transparent 99px,
+        #e5e7eb 99px,
+        #e5e7eb 100px
+    );
 }
+
     .bd-availability {
         position: absolute;
         top: 0;
@@ -276,6 +299,10 @@
         box-shadow: 0 2px 5px rgba(37, 99, 235, .22);
         transition: transform .12s, box-shadow .12s;
     }
+    .bd-booking {
+    box-sizing: border-box;
+}
+
 
     .bd-booking:hover {
         transform: translateY(-1px);
@@ -303,12 +330,24 @@
         text-overflow: ellipsis;
     }
 
+
+.bd-booking-title {
+    line-height: 1.4;
+}
+
     .bd-booking-time {
+    display: flex;
+    flex-direction: column;
         margin-top: 4px;
         font-size: 10px;
         opacity: .9;
         white-space: nowrap;
     }
+    .bd-booking-time {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+}
 
     .bd-empty {
         padding: 55px 20px;
@@ -480,14 +519,7 @@ TimeLine View
         </div>
     </section>
 
-    <!-- <script type="application/json" id="booking-data">
-        {
-            "resources":{{resource_json}},
-            "bookings":{{bookings_json}},
-            "availability":{{availability_json}}
-        }
-    </script> -->
-    <!-- BJ-TEST: [{{ bookings_json }}] -->
+ 
 <script>
     (function(){ 
         
@@ -495,9 +527,14 @@ const resources={{resources_json | safe}}
 const bookings = {{bookings_json | safe}}
 const availability = {{availability_json | safe}}
 
-const START_HOUR = 9;
-const END_HOUR = 18;
-const TOTAL_HOURS = END_HOUR - START_HOUR;
+let START_HOUR = 0;
+let END_HOUR = 24;
+let TOTAL_HOURS = END_HOUR - START_HOUR;
+let HOUR_WIDTH =100;
+
+const MIN_HOUR_WIDTH = 100;
+const RESOURCE_COLUMN_WIDTH = 210;
+
 
 const datePicker = document.getElementById("datePicker");
 const dateTitle = document.getElementById("dateTitle");
@@ -534,7 +571,32 @@ function timeToMinutes(value) {
         parseInt(parts[0] || 0) * 60 +
         parseInt(parts[1] || 0)
     );
+
 }
+
+function userDateTimeToMinutes(isoString) {
+    if (!isoString) return null;
+
+    const date = new Date(isoString);
+
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: userTimeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+    }).formatToParts(date);
+
+    const hour = Number(
+        parts.find(part => part.type === "hour").value
+    );
+
+    const minute = Number(
+        parts.find(part => part.type === "minute").value
+    );
+
+    return hour * 60 + minute;
+}
+
 
 function formatTime(value) {
     if (!value) return "";
@@ -629,21 +691,24 @@ function filteredBookings() {
     });
 }
 
+
+
+
 function renderTimeHeader() {
     timeHeader.innerHTML = "";
+
+        
 
     for (let hour = START_HOUR; hour < END_HOUR; hour++) {
         const cell = document.createElement("div");
         cell.className = "bd-time-cell";
-
-        const suffix = hour >= 12 ? "PM" : "AM";
-        const displayHour = hour % 12 || 12;
-
-        cell.textContent = `${displayHour} ${suffix}`;
+        cell.textContent =
+            `${String(hour).padStart(2, "0")}:00`;
 
         timeHeader.appendChild(cell);
     }
 }
+
 
 let userTimeZone = "Asia/Kolkata";
 
@@ -659,21 +724,111 @@ async function getUserTimezone() {
     const result = await response.json();
     userTimeZone = result.message || "UTC";
 }
+function formatUserDateTime(isoString) {
+    if (!isoString) return "";
+
+    return new Intl.DateTimeFormat("en-US", {
+        timeZone: userTimeZone,
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        month: "short",
+        day: "numeric",
+    }).format(new Date(isoString));
+}
 
 async function getResourceSchedule(resource, date) {
     const response = await fetch(
-        `/api/method/booking_diary.services.booking_schedule.get_schedule` +
+        `/api/method/booking_diary.services.booking_schedule.get_user_day_schedule` +
         `?resource=${encodeURIComponent(resource)}` +
-        `&booking_date=${encodeURIComponent(date)}`
+        `&user_date=${encodeURIComponent(date)}` +
+        `&slot_duration=30` +
+        `&user_timezone=${encodeURIComponent(userTimeZone)}`
     );
 
     if (!response.ok) {
-        throw new Error("Failed to fetch resource schedule.");
+        throw new Error("Failed to fetch user-day schedule.");
     }
 
     const result = await response.json();
+    const data = result.message;
 
-    return result.message;
+    // Combine the resource-local schedules into one result.
+    return {
+        ...data,
+        slots: (data.schedules || []).flatMap(
+            schedule => schedule.slots || []
+        ),
+        bookings: (data.schedules || []).flatMap(
+            schedule => schedule.bookings || []
+        ),
+        is_blackout: (data.schedules || []).every(
+            schedule => schedule.is_blackout
+        ),
+    };
+}
+
+function getTimelineRange(startISO, endISO, selectedDate) {
+    if (!startISO || !endISO) return null;
+
+    const selectedDay = formatDate(selectedDate);
+
+    const getLocalParts = (iso) => {
+        const parts = new Intl.DateTimeFormat("en-CA", {
+            timeZone: userTimeZone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hourCycle: "h23",
+        }).formatToParts(new Date(iso));
+
+        const values = Object.fromEntries(
+            parts.map(part => [part.type, part.value])
+        );
+
+        return {
+            date: `${values.year}-${values.month}-${values.day}`,
+            minutes: Number(values.hour) * 60 +
+                     Number(values.minute),
+        };
+    };
+
+    const start = getLocalParts(startISO);
+    const end = getLocalParts(endISO);
+
+    // Restrict the interval to the selected user's calendar day.
+    if (start.date > selectedDay || end.date < selectedDay) {
+        return null;
+    }
+
+    const startMinutes =
+        start.date < selectedDay ? 0 : start.minutes;
+
+    const endMinutes =
+        end.date > selectedDay ? 1440 : end.minutes;
+
+    if (endMinutes <= startMinutes) return null;
+
+    return {
+        start: startMinutes,
+        end: endMinutes,
+    };
+}
+
+function formatResourceTime(time) {
+    if (!time) return "";
+
+    const [hours, minutes] = String(time).split(":").map(Number);
+
+    const date = new Date(2000, 0, 1, hours, minutes);
+
+    return new Intl.DateTimeFormat("en-IN", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+    }).format(date);
 }
 
 async function renderTimeline() {
@@ -710,6 +865,41 @@ for (const resource of selectedResources) {
         schedules[resource.name] = null;
     }
 }
+// Find the earliest hour with availability across all resources.
+// Always display the complete user-local calendar day.
+START_HOUR = 0;
+END_HOUR = 24;
+TOTAL_HOURS = 24;
+// const timelineWidth = TOTAL_HOURS * HOUR_WIDTH;
+
+// timeHeader.style.gridTemplateColumns =
+//     `repeat(${TOTAL_HOURS}, ${HOUR_WIDTH}px)`;
+
+// timeHeader.style.width = `${timelineWidth}px`;
+const timeline = document.querySelector(".bd-timeline");
+
+const availableWidth = Math.max(
+    0,
+    timeline.clientWidth - RESOURCE_COLUMN_WIDTH
+);
+
+HOUR_WIDTH = Math.max(
+    MIN_HOUR_WIDTH,
+    availableWidth / TOTAL_HOURS
+);
+timeline.style.setProperty("--bd-hour-width", `${HOUR_WIDTH}px`);
+
+
+const timelineWidth = TOTAL_HOURS * HOUR_WIDTH;
+
+const timeHeader = document.getElementById("timeHeader");
+
+timeHeader.style.gridTemplateColumns =
+    `repeat(${TOTAL_HOURS}, ${HOUR_WIDTH}px)`;
+
+timeHeader.style.width = `${timelineWidth}px`;
+timeHeader.style.minWidth = `${timelineWidth}px`;
+renderTimeHeader();
 
     resourceRows.innerHTML = "";
 
@@ -739,6 +929,8 @@ for (const resource of selectedResources) {
     `;
 
     const scheduleCell = document.createElement("div");
+    scheduleCell.style.width = `${timelineWidth}px`;
+scheduleCell.style.minWidth = `${timelineWidth}px`;
     scheduleCell.className = "bd-schedule-cell";
 
    const schedule = schedules[resource.name];
@@ -746,10 +938,10 @@ for (const resource of selectedResources) {
 const dayName = getDayName(selectedDate);
 
 // No schedule returned
-if (!schedule || !schedule.slots.length) {
+if (!schedule) {
     scheduleCell.innerHTML = `
         <div class="bd-empty" style="padding:30px">
-            Not available on ${dayName}
+            Schedule could not be loaded.
         </div>
     `;
 
@@ -759,137 +951,203 @@ if (!schedule || !schedule.slots.length) {
     return;
 }
 
+if (!schedule.slots.length) {
+    scheduleCell.innerHTML = `
+        <div class="bd-empty" style="padding:30px">
+            Not available on ${dayName}
+        </div>
+    `;
+}
 
-// ---- click to create booking ----
+
+
+    // ---- click to create booking ----
+
+
 scheduleCell.onclick = (event) => {
-
     const rect = scheduleCell.getBoundingClientRect();
+    const offsetX = event.clientX - rect.left;
 
-    const percentage =
-        (event.clientX - rect.left) / rect.width;
-
-    const startMinutes =
-        Math.round(
-            (
-                START_HOUR * 60 +
-                percentage * TOTAL_HOURS * 60
-            ) / 30
-        ) * 30;
+    const startMinutes = Math.floor(
+        (START_HOUR * 60 + (offsetX / HOUR_WIDTH) * 60) / 30
+    ) * 30;
 
     const endMinutes = startMinutes + 60;
 
-
-    // Find the backend-generated slots
-    const selectedSlots = schedule.slots.filter(slot => {
-
-        const slotStart =
-            timeToMinutes(slot.start_time);
-
-        const slotEnd =
-            timeToMinutes(slot.end_time);
-
-        return (
-            slotStart < endMinutes &&
-            slotEnd > startMinutes
-        );
-    });
-
-
-    // Make sure the complete requested period
-    // consists only of available slots
-    const allAvailable =
-        selectedSlots.length === 2 &&
-        selectedSlots.every(
-            slot => slot.status === "available"
-        );
-
-
-    if (!allAvailable) {
-        frappe.msgprint(
-            "This time slot is not available."
-        );
-
+    if (startMinutes < 0 || endMinutes > 1440) {
+        frappe.msgprint("Please select a valid time.");
         return;
     }
 
+    // Convert a user-local date/time to an absolute instant.
+    const toInstant = (dateString, minutes) => {
+        const [year, month, day] = dateString.split("-").map(Number);
+        const hour = Math.floor(minutes / 60);
+        const minute = minutes % 60;
 
-    const fmt = (minutes) =>
-        `${String(Math.floor(minutes / 60)).padStart(2, "0")}:` +
-        `${String(minutes % 60).padStart(2, "0")}:00`;
+        const target = Date.UTC(year, month - 1, day, hour, minute);
+        let instant = target;
 
+        for (let i = 0; i < 4; i++) {
+            const parts = new Intl.DateTimeFormat("en-CA", {
+                timeZone: userTimeZone,
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+                hourCycle: "h23",
+            }).formatToParts(new Date(instant));
+
+            const values = Object.fromEntries(
+                parts.map(part => [part.type, part.value])
+            );
+
+            const represented = Date.UTC(
+                Number(values.year),
+                Number(values.month) - 1,
+                Number(values.day),
+                Number(values.hour),
+                Number(values.minute)
+            );
+
+            instant += target - represented;
+        }
+
+        return new Date(instant);
+    };
+
+    const nextDate = new Date(selectedDate);
+    nextDate.setDate(nextDate.getDate() + 1);
+
+    const startDateString = formatDate(selectedDate);
+    const endDateString = endMinutes === 1440
+        ? formatDate(nextDate)
+        : startDateString;
+
+    const startInstant = toInstant(startDateString, startMinutes);
+    const endInstant = toInstant(
+        endDateString,
+        endMinutes === 1440 ? 0 : endMinutes
+    );
+
+    const resourceTimezone = schedule.resource_timezone;
+
+    const toResourceParts = (instant) => {
+        const parts = new Intl.DateTimeFormat("en-CA", {
+            timeZone: resourceTimezone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hourCycle: "h23",
+        }).formatToParts(instant);
+
+        const values = Object.fromEntries(
+            parts.map(part => [part.type, part.value])
+        );
+
+        return {
+            date: `${values.year}-${values.month}-${values.day}`,
+            time: `${values.hour}:${values.minute}:${values.second}`,
+        };
+    };
+
+    const resourceStart = toResourceParts(startInstant);
+    const resourceEnd = toResourceParts(endInstant);
+
+    if (resourceStart.date !== resourceEnd.date) {
+        frappe.msgprint(
+            "This booking crosses the resource's calendar day. Please select a different time."
+        );
+        return;
+    }
+
+    const resourceSchedule = schedule.schedules.find(
+        item => item.date === resourceStart.date
+    );
+
+    if (!resourceSchedule) {
+        frappe.msgprint("No schedule found for this resource-local date.");
+        return;
+    }
+
+    const start = timeToMinutes(resourceStart.time);
+    const end = timeToMinutes(resourceEnd.time);
+
+    const selectedSlots = resourceSchedule.slots.filter(slot => {
+        const slotStart = timeToMinutes(slot.start_time);
+        const slotEnd = timeToMinutes(slot.end_time);
+
+        return slotStart < end && slotEnd > start;
+    });
+
+    if (
+        selectedSlots.length !== 2 ||
+        selectedSlots.some(slot => slot.status !== "available")
+    ) {
+        frappe.msgprint("This time slot is not available.");
+        return;
+    }
 
     window.location.href =
         "/app/booking-diary/new-booking-diary-1" +
-        "?resource=" +
-        encodeURIComponent(resource.name) +
-        "&booking_date=" +
-        encodeURIComponent(formatDate(selectedDate)) +
-        "&start_time=" +
-        encodeURIComponent(fmt(startMinutes)) +
-        "&end_time=" +
-        encodeURIComponent(fmt(endMinutes));
+        "?resource=" + encodeURIComponent(resource.name) +
+        "&booking_date=" + encodeURIComponent(resourceStart.date) +
+        "&start_time=" + encodeURIComponent(resourceStart.time) +
+        "&end_time=" + encodeURIComponent(resourceEnd.time);
 };
 
 
-// ---- availability shading ----
 
-const availableSlots = schedule.slots.filter(
-    slot => slot.status === "available"
-);
+    // ---- availability shading ----
 
-
-availableSlots.forEach(slot => {
-
-    const start =
-        timeToMinutes(slot.start_time);
-
-    const end =
-        timeToMinutes(slot.end_time);
-
-
-    const visibleStart =
-        Math.max(start, START_HOUR * 60);
-
-    const visibleEnd =
-        Math.min(end, END_HOUR * 60);
-
-
-    if (visibleEnd <= visibleStart) {
-        return;
-    }
-
-
-    const left =
-        (
-            (visibleStart - START_HOUR * 60) /
-            (TOTAL_HOURS * 60)
-        ) * 100;
-
-
-    const width =
-        (
-            (visibleEnd - visibleStart) /
-            (TOTAL_HOURS * 60)
-        ) * 100;
-
-
-    const availableBlock =
-        document.createElement("div");
-
-    availableBlock.className =
-        "bd-availability";
-
-    availableBlock.style.left =
-        `${left}%`;
-
-    availableBlock.style.width =
-        `${Math.max(width, 0)}%`;
-
-
-    scheduleCell.appendChild(
-        availableBlock
+    const availableSlots = schedule.slots.filter(
+        slot => slot.status === "available"
     );
-});
+
+    availableSlots.forEach(slot => {
+        const range = getTimelineRange(
+            slot.start_time_user_datetime,
+            slot.end_time_user_datetime,
+            selectedDate
+        );
+        
+
+        if (!range) return;
+
+        const visibleStart = Math.max(
+            range.start,
+            START_HOUR * 60
+        );
+
+        const visibleEnd = Math.min(
+            range.end,
+            END_HOUR * 60
+        );
+
+        if (visibleEnd <= visibleStart) return;
+
+        const left =
+            ((visibleStart - START_HOUR * 60) /
+                (TOTAL_HOURS * 60)) * 100;
+
+        const width =
+            ((visibleEnd - visibleStart) /
+                (TOTAL_HOURS * 60)) * 100;
+
+        const availableBlock = document.createElement("div");
+
+        availableBlock.className = "bd-availability";
+        availableBlock.style.left = `${left}%`;
+        availableBlock.style.width = `${Math.max(width, 0)}%`;
+        
+
+        scheduleCell.appendChild(availableBlock);
+    });
+
     // ---- booking blocks ----
 
 const resourceBookings = schedule
@@ -918,48 +1176,72 @@ const resourceBookings = schedule
     : [];
 
 resourceBookings.forEach(booking => {
-    const start = timeToMinutes(booking.start_time);
-    const end = timeToMinutes(booking.end_time);
+const range = getTimelineRange(
+    booking.start_time_user_datetime,
+    booking.end_time_user_datetime,
+    selectedDate
+);
+console.log("BOOKING POSITION DEBUG", {
+    booking: booking.booking_id,
+    startISO: booking.start_time_user_datetime,
+    endISO: booking.end_time_user_datetime,
+    selectedDate: formatDate(selectedDate),
+    range,
+    START_HOUR,
+    HOUR_WIDTH,
+    TOTAL_HOURS
+});
 
-    const visibleStart = Math.max(start, START_HOUR * 60);
-    const visibleEnd = Math.min(end, END_HOUR * 60);
+if (!range) return;
 
-    if (visibleEnd <= visibleStart) return;
+const visibleStart = Math.max(range.start, START_HOUR * 60);
+const visibleEnd = Math.min(range.end, END_HOUR * 60);
 
-    const left =
-        ((visibleStart - START_HOUR * 60) /
-            (TOTAL_HOURS * 60)) * 100;
+if (visibleEnd <= visibleStart) return;
 
-    const width =
-        ((visibleEnd - visibleStart) /
-            (TOTAL_HOURS * 60)) * 100;
+const left =
+    ((visibleStart - START_HOUR * 60) / (TOTAL_HOURS * 60)) * 100;
 
-    const bookingBlock = document.createElement("div");
+const width =
+    ((visibleEnd - visibleStart) / (TOTAL_HOURS * 60)) * 100;
+            const bookingBlock = document.createElement("div");
 
-    bookingBlock.className =
-        `bd-booking ${statusClass(booking.status)}`;
+bookingBlock.className =
+    `bd-booking ${statusClass(booking.status)}`;
 
-    bookingBlock.style.left = `${left}%`;
+bookingBlock.style.left = `${left}%`;
+bookingBlock.style.width = `${Math.max(width, 7)}%`;
+        console.log("BOOKING CSS DEBUG", {
+    booking: booking.booking_id,
+    left: bookingBlock.style.left,
+    width: bookingBlock.style.width,
+    computedLeft: getComputedStyle(bookingBlock).left,
+    position: getComputedStyle(bookingBlock).position,
+    parentWidth: scheduleCell.clientWidth,
+    parentClass: scheduleCell.className
+});
 
-    bookingBlock.style.width =
-        `${Math.max(width, 7)}%`;
-
+const userStartTime = formatUserDateTime(booking.start_time_user_datetime)
+const userEndTime = formatUserDateTime(booking.end_time_user_datetime)
     bookingBlock.title =
         `${booking.booking_id || booking.name} • ` +
-        `${formatTime(booking.start_time)} - ` +
-        `${formatTime(booking.end_time)}`;
+        `${userStartTime} - ` +
+        `${userEndTime}`;
 
-    bookingBlock.innerHTML = `
-        <div class="bd-booking-title">
-            ${booking.booking_id || booking.name}
-        </div>
+    
+const startLabel = formatResourceTime(booking.start_time);
+const endLabel = formatResourceTime(booking.end_time);
 
-        <div class="bd-booking-time">
-            ${formatTime(booking.start_time)}
-            -
-            ${formatTime(booking.end_time)}
-        </div>
-    `;
+   
+bookingBlock.innerHTML = `
+    <div class="bd-booking-title">
+        ${booking.booking_id || booking.name}
+    </div>
+    <div class="bd-booking-time">
+        ${startLabel} – ${endLabel}
+        <span>${resource.time_zone}</span>
+    </div>
+`;
 
     bookingBlock.onclick = (event) => {
         event.stopPropagation();
