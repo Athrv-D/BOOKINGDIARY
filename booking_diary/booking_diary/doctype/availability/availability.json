@@ -52,7 +52,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-07 12:43:35.800141",
+ "modified": "2026-10-14 16:51:42.677269",
  "modified_by": "Administrator",
  "module": "Booking Diary",
  "name": "Availability",
@@ -69,6 +69,13 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Booking User"
   }
  ],
  "row_format": "Dynamic",
