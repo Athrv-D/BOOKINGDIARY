@@ -37,7 +37,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-14 16:51:43.279708",
+ "modified": "2026-10-15 12:14:45.561947",
  "modified_by": "Administrator",
  "module": "Booking Diary",
  "name": "Blackout Date",
@@ -61,6 +61,16 @@
    "print": 1,
    "read": 1,
    "role": "Booking User"
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Booking Manager",
+   "write": 1
   }
  ],
  "row_format": "Dynamic",

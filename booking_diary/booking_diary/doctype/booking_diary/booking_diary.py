@@ -177,9 +177,12 @@ ALLOWED_STATUS_TRANSITIONS = {
 class BookingDiary(Document):
 
     def validate(self):
+        self.set_booking_source()
         self.validate_customer_ownership()
         self.validate_status_transition()
+        self.validate_field_protection()
         self.validate_time()
+
 
         # Only active bookings need scheduling validations.
         # Completed and cancelled bookings must remain editable.
@@ -431,3 +434,119 @@ class BookingDiary(Document):
             frappe.throw(
                 "This resource is already booked during the selected time."
             )
+    def validate_field_protection(self):
+    # New documents have no previous values to protect.
+        if self.is_new():
+            return
+
+        previous_doc = self.get_doc_before_save()
+        if not previous_doc:
+            return
+
+        if self.booking_source != previous_doc.booking_source:
+           frappe.throw("Booking Source cannot be changed after creation.")
+        # Booking ID must never change after creation.
+        if self.booking_id != previous_doc.booking_id:
+            frappe.throw("Booking ID cannot be changed after creation.")
+
+        # A booking's customer assignment cannot be changed after creation.
+        if self.customer_user != previous_doc.customer_user:
+            frappe.throw("The booking owner cannot be changed after creation.")
+
+        user = frappe.session.user
+        roles = set(frappe.get_roles(user))
+
+        is_admin = (
+        user == "Administrator"
+        or "System Manager" in roles
+    )
+
+        is_manager = "Booking Manager" in roles
+
+        protected_fields = (
+                "resource",
+                "customer_user",
+                "booking_date",
+                "start_time",
+                "end_time",
+            )
+        if is_manager and not is_admin:
+            if previous_doc.booking_source != "Staff":
+                fields_to_check = {
+                    "resource": lambda value: value,
+                    "customer_user": lambda value: value,
+                    "booking_date": lambda value: (
+                        str(value) if value else None
+                    ),
+                    "start_time": lambda value: (
+                        str(frappe.utils.get_time(value)) if value else None
+                    ),
+                    "end_time": lambda value: (
+                        str(frappe.utils.get_time(value)) if value else None
+                    ),
+                }
+
+                for field, normalize in fields_to_check.items():
+                    old_value = normalize(previous_doc.get(field))
+                    new_value = normalize(self.get(field))
+
+                    if old_value != new_value:
+                        frappe.throw(
+                            "You cannot change the details of a "
+                            "customer-created booking."
+                        )
+        is_staff = (
+            is_admin
+            or is_manager
+        )
+        # Customers cannot modify booking details once the booking
+        # has progressed beyond Draft or Pending.
+        if not is_staff and "Booking User" in roles:
+            if previous_doc.status not in {"Draft", "Pending"}:
+
+                for field in protected_fields:
+                    if self.get(field) != previous_doc.get(field):
+                        frappe.throw(
+                            "Booking details cannot be changed "
+                            "after the booking is confirmed or closed."
+                        )
+        
+    def set_booking_source(self):
+        if not self.is_new():
+            return
+
+        user = frappe.session.user
+        roles = set(frappe.get_roles(user))
+
+        if (
+            user == "Administrator"
+            or "System Manager" in roles
+            or "Booking Manager" in roles
+        ):
+            self.booking_source = "Staff"
+
+        elif "Booking User" in roles:
+            self.booking_source = "Customer"
+
+        else:
+            frappe.throw(
+                "You do not have permission to create bookings."
+            )
+
+
+@frappe.whitelist()
+def get_booking_source():
+    user = frappe.session.user
+    roles = set(frappe.get_roles(user))
+
+    if (
+        user == "Administrator"
+        or "System Manager" in roles
+        or "Booking Manager" in roles
+    ):
+        return "Staff"
+
+    if "Booking User" in roles:
+        return "Customer"
+
+    frappe.throw("You do not have permission to create bookings.")

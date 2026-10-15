@@ -18,6 +18,16 @@
             "booking_id",
             "BK-" + String(Date.now()).slice(-6)
         );
+         if (!frm.is_new()) return;
+
+    frappe.call({
+        method: "booking_diary.booking_diary.doctype.booking_diary.booking_diary.get_booking_source",
+        callback(r) {
+            if (r.message) {
+                frm.set_value("booking_source", r.message);
+            }
+        }
+    });
     },
 
     refresh(frm) {
