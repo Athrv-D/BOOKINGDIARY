@@ -207,10 +207,34 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
             "start_time",
             "end_time",
             "customer",
+            "customer_user",
             "status",
         ],
         order_by="start_time asc",
     )
+    current_user = frappe.session.user
+    manager = is_booking_manager(current_user)
+
+    safe_bookings = []
+
+    for booking in bookings:
+        can_see_details = (
+            manager
+            or booking.customer_user == current_user
+        )
+
+        if can_see_details:
+            safe_bookings.append(booking)
+        else:
+            safe_bookings.append({
+                # Keep only data needed to draw the occupied block.
+                "name": None,
+                "booking_id": None,
+                "start_time": booking.start_time,
+                "end_time": booking.end_time,
+                "customer": None,
+                # "status": booking.status,
+            })
 
     schedule = []
 
@@ -221,7 +245,7 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
             "date": str(booking_date),
             "day": day_name,
             "slots": [],
-            "bookings": bookings,
+            "bookings": safe_bookings,
             "time_zone":resource_timezone,
         }
 
@@ -266,14 +290,25 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
                     break
 
             if booking:
-                schedule.append({
+                can_see_details = (
+                    manager
+                    or booking.customer_user == current_user
+                )
+
+                slot_data = {
                     "start_time": slot_start_time,
                     "end_time": slot_end_time,
                     "status": "booked",
-                    "booking_id": booking.booking_id,
-                    "booking_name": booking.name,
-                    "customer": booking.customer,
-                })
+                }
+
+                if can_see_details:
+                    slot_data.update({
+                        "booking_id": booking.booking_id,
+                        "booking_name": booking.name,
+                        "customer": booking.customer,
+                    })
+
+                schedule.append(slot_data)
             else:
                 schedule.append({
                     "start_time": slot_start_time,
@@ -290,7 +325,7 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
 )
 
     add_user_display_times(
-        bookings,
+        safe_bookings,
         booking_date,
         resource_timezone,
         user_timezone,
@@ -301,13 +336,22 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
         "date": str(booking_date),
         "day": day_name,
         "slots": schedule,
-        "bookings": bookings,
+        "bookings": safe_bookings,
         "is_blackout": False,
         "blackout_reason": None,
         "time_zone":resource_timezone,
     
     }
 
+def is_booking_manager(user=None):
+    user = user or frappe.session.user
+    roles = frappe.get_roles(user)
+
+    return (
+        user == "Administrator"
+        or "Booking Manager" in roles
+        or "System Manager" in roles
+    )
 
 @frappe.whitelist()
 def get_schedule(resource, booking_date, slot_duration=30, user_timezone=None,):

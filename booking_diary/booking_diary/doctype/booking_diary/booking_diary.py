@@ -159,6 +159,7 @@
 
 
 import frappe
+from datetime import timedelta
 from frappe.model.document import Document
 
 
@@ -187,10 +188,13 @@ class BookingDiary(Document):
         # Only active bookings need scheduling validations.
         # Completed and cancelled bookings must remain editable.
         if self.status in RESERVING_STATUSES:
-            self.validate_future_booking()
-            self.validate_blackout()
-            self.validate_availability()
-            self.validate_conflict()
+            if self.booking_type == "Recurring":
+                self.validate_recurring_range()
+            else:
+                self.validate_future_booking()
+                self.validate_blackout()
+                self.validate_availability()
+                self.validate_conflict()
     
     def validate_customer_ownership(self):
         user = frappe.session.user
@@ -286,6 +290,41 @@ class BookingDiary(Document):
         self.end_time = frappe.utils.get_time(self.end_time)
         if self.start_time >= self.end_time:
             frappe.throw("End Time must be after Start Time.")
+    
+    def validate_recurring_range(self):
+        if self.booking_type != "Recurring":
+            return
+
+        if not self.repeat_until:
+            frappe.throw("Please select Repeat Until for a recurring booking.")
+
+        first_date = frappe.utils.getdate(self.booking_date)
+        last_date = frappe.utils.getdate(self.repeat_until)
+
+        if last_date < first_date:
+            frappe.throw("Repeat Until must be on or after Booking Date.")
+
+        # Guard against accidentally creating a very large series.
+        if (last_date - first_date).days > 90:
+            frappe.throw("A recurring booking cannot exceed 91 dates.")
+
+        original_date = self.booking_date
+
+        try:
+            current_date = first_date
+
+            while current_date <= last_date:
+                self.booking_date = current_date
+
+                self.validate_future_booking()
+                self.validate_blackout()
+                self.validate_availability()
+                self.validate_conflict()
+
+                current_date += timedelta(days=1)
+
+        finally:
+            self.booking_date = original_date
 
     def validate_future_booking(self):
         from datetime import datetime
@@ -392,8 +431,7 @@ class BookingDiary(Document):
 
    
     def validate_conflict(self):
-        # Lock this resource row so concurrent booking requests
-        # for the same resource are serialized until transaction end.
+        # Serialize booking checks for the same resource.
         frappe.db.sql(
             """
             SELECT name
@@ -404,36 +442,68 @@ class BookingDiary(Document):
             (self.resource,),
         )
 
-        # Use a locking read to check the latest committed bookings.
-        conflicts = frappe.db.sql(
-            """
-            SELECT name
-            FROM `tabBooking Diary`
-            WHERE resource = %s
-            AND booking_date = %s
-            AND name != %s
-            AND status NOT IN (
-                'Cancelled', 'Draft', 'No Show', 'Completed'
-            )
-            AND start_time < %s
-            AND end_time > %s
-            LIMIT 1
-            FOR UPDATE
-            """,
-            (
-                self.resource,
-                self.booking_date,
-                self.name or "",
-                self.end_time,
-                self.start_time,
-            ),
-            as_dict=True,
-        )
+        # A single booking checks its own date.
+        # A recurring request checks every date in its range.
+        if self.booking_type == "Recurring":
+            if not self.repeat_until:
+                frappe.throw("Repeat Until is required for a recurring booking.")
 
-        if conflicts:
-            frappe.throw(
-                "This resource is already booked during the selected time."
+            start_date = frappe.utils.getdate(self.booking_date)
+            end_date = frappe.utils.getdate(self.repeat_until)
+
+            if end_date < start_date:
+                frappe.throw("Repeat Until cannot be before the booking start date.")
+
+            dates_to_check = []
+            current_date = start_date
+
+            while current_date <= end_date:
+                dates_to_check.append(current_date)
+                current_date = frappe.utils.add_days(current_date, 1)
+        else:
+            dates_to_check = [frappe.utils.getdate(self.booking_date)]
+
+        # Check each date against existing single bookings and recurring ranges.
+        for date_to_check in dates_to_check:
+            conflicts = frappe.db.sql(
+                """
+                SELECT name
+                FROM `tabBooking Diary`
+                WHERE resource = %s
+                AND name != %s
+                AND status NOT IN (
+                    'Cancelled', 'Draft', 'No Show', 'Completed'
+                )
+                AND (
+                    booking_date = %s
+                    OR (
+                        booking_type = 'Recurring'
+                        AND booking_date <= %s
+                        AND repeat_until >= %s
+                    )
+                )
+                AND start_time < %s
+                AND end_time > %s
+                LIMIT 1
+                FOR UPDATE
+                """,
+                (
+                    self.resource,
+                    self.name or "",
+                    date_to_check,
+                    date_to_check,
+                    date_to_check,
+                    self.end_time,
+                    self.start_time,
+                ),
+                as_dict=True,
             )
+
+            if conflicts:
+                frappe.throw(
+                    f"This resource is already booked during the selected time "
+                    f"on {date_to_check}."
+                )
     def validate_field_protection(self):
     # New documents have no previous values to protect.
         if self.is_new():
@@ -550,3 +620,24 @@ def get_booking_source():
         return "Customer"
 
     frappe.throw("You do not have permission to create bookings.")
+
+
+@frappe.whitelist()
+def get_my_booking(booking_name):
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in.")
+
+    booking = frappe.get_doc("Booking Diary", booking_name)
+
+    if booking.customer_user != frappe.session.user:
+        frappe.throw("You do not have permission to access this booking.")
+
+    return {
+        "name": booking.name,
+        "resource": booking.resource,
+        "booking_date": booking.booking_date,
+        "start_time": booking.start_time,
+        "end_time": booking.end_time,
+        "status": booking.status,
+        "payment_status": booking.payment_status,
+    }

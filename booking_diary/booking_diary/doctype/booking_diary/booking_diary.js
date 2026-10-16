@@ -34,6 +34,11 @@
         updateBookingTimezonePreview(frm);
     },
 
+    booking_type(frm) {
+    if (frm.doc.booking_type !== "Daily Recurring") {
+        frm.set_value("repeat_until", "");
+    }
+},
     resource(frm) {
         updateBookingTimezonePreview(frm);
     },

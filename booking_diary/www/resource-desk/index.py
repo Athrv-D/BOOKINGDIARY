@@ -19,6 +19,13 @@ def get_context(context):
         order_by="resource_name asc",
     )
 
+    current_user = frappe.session.user
+    is_manager = (
+        current_user == "Administrator"
+        or "Booking Manager" in frappe.get_roles(current_user)
+        or "System Manager" in frappe.get_roles(current_user)
+    )
+
     bookings = frappe.get_all(
         "Booking Diary",
         fields=[
@@ -29,6 +36,7 @@ def get_context(context):
             "start_time",
             "end_time",
             "customer",
+            "customer_user",
             "status",
             "payment_status",
             "remarks",
@@ -36,14 +44,34 @@ def get_context(context):
         filters={
             "booking_date": [
                 "between",
-                [
-                    add_days(nowdate(), -90),
-                    add_days(nowdate(), 180),
-                ],
+                [add_days(nowdate(), -90), add_days(nowdate(), 180)],
             ]
         },
         order_by="booking_date asc, start_time asc",
     )
+
+    safe_bookings = []
+
+    for booking in bookings:
+        can_see_details = (
+            is_manager or booking.get("customer_user") == current_user
+        )
+
+        if can_see_details:
+            safe_bookings.append(booking)
+        else:
+            safe_bookings.append({
+                "name": None,
+                "booking_id": None,
+                "resource": booking.resource,
+                "booking_date": booking.booking_date,
+                "start_time": booking.start_time,
+                "end_time": booking.end_time,
+                "customer": None,
+                "status": None,
+                "payment_status": None,
+                "remarks": None,
+            })
 
     availability = frappe.get_all(
         "Availability",
@@ -57,7 +85,7 @@ def get_context(context):
     )
 
     context.resources = resources
-    context.bookings = bookings
+    context.bookings = safe_bookings
     context.availability = availability
 
     context.resources_json = json.dumps(
@@ -66,7 +94,7 @@ def get_context(context):
     )
 
     context.bookings_json = json.dumps(
-        bookings,
+        safe_bookings,
         default=str
     )
 

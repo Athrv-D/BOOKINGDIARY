@@ -674,7 +674,7 @@ function filteredBookings() {
         if (search) {
             const text = [
                 booking.booking_id,
-                booking.customer,
+                booking.customer_user,
                 booking.resource,
                 booking.status,
                 booking.remarks
@@ -1157,17 +1157,21 @@ const resourceBookings = schedule
         }
 
         if (search) {
-            const text = [
-                booking.booking_id,
-                booking.customer,
-                resource.name,
-                booking.status,
-            ]
+            const isRedacted =!booking.name;
+            if(!isRedacted){
+
+                const text = [
+                    booking.booking_id,
+                    booking.customer_user,
+                    resource.name,
+                    booking.status,
+                ]
                 .join(" ")
                 .toLowerCase();
-
-            if (!text.includes(search)) {
-                return false;
+                
+                if (!text.includes(search)) {
+                    return false;
+                }
             }
         }
 
@@ -1223,19 +1227,18 @@ bookingBlock.style.width = `${Math.max(width, 7)}%`;
 
 const userStartTime = formatUserDateTime(booking.start_time_user_datetime)
 const userEndTime = formatUserDateTime(booking.end_time_user_datetime)
-    bookingBlock.title =
-        `${booking.booking_id || booking.name} • ` +
-        `${userStartTime} - ` +
-        `${userEndTime}`;
-
-    
-const startLabel = formatResourceTime(booking.start_time);
+    const startLabel = formatResourceTime(booking.start_time);
 const endLabel = formatResourceTime(booking.end_time);
 
-   
+const canOpenBooking = Boolean(booking.name);
+
+bookingBlock.title = canOpenBooking
+    ? `${booking.booking_id || booking.name} • ${userStartTime} - ${userEndTime}`
+    : "Booked";
+
 bookingBlock.innerHTML = `
     <div class="bd-booking-title">
-        ${booking.booking_id || booking.name}
+        ${canOpenBooking ? (booking.booking_id || booking.name) : "Booked"}
     </div>
     <div class="bd-booking-time">
         ${startLabel} – ${endLabel}
@@ -1243,12 +1246,14 @@ bookingBlock.innerHTML = `
     </div>
 `;
 
+if (canOpenBooking) {
     bookingBlock.onclick = (event) => {
         event.stopPropagation();
-
-        window.location.href =
-            `/app/booking-diary/${booking.name}`;
+        window.location.href = `/app/booking-diary/${booking.name}`;
     };
+} else {
+    bookingBlock.style.cursor = "default";
+}
 
     scheduleCell.appendChild(bookingBlock);
 });
@@ -1282,7 +1287,10 @@ function renderListing() {
                 item.name === booking.resource
             );
 
+
         const row = document.createElement("div");
+        const canOpenBooking = Boolean(booking.name);
+        const statusCell = canOpenBooking? `<span class="bd-status ${statusClass(booking.status)}">${booking.status || "—"}</span>` : "—"
 
         row.className = "bd-list-row";
 
@@ -1304,24 +1312,23 @@ function renderListing() {
                     ${resource?.resource_name || booking.resource}
                 </strong>
             </div>
-
+      
             <div>
-                ${booking.customer || "—"}
+                ${canOpenBooking?( booking.customer_user || "—"):"Booked"}
             </div>
 
             <div>
-                <span class="bd-status ${statusClass(booking.status)}">
-                    ${booking.status}
-                </span>
-            </div>
-        `;
+               ${statusCell}</div>  `;
 
-        row.style.cursor = "pointer";
+        if(canOpenBooking){
 
-        row.onclick = () => {
-            window.location.href =
-                `/app/booking-diary/${booking.name}`;
-        };
+            row.style.cursor = "pointer";
+    
+            row.onclick = () => {
+                window.location.href =
+                    `/app/booking-diary/${booking.name}`;
+            };
+        }else{row.style.cursor="default";}
 
         bookingRows.appendChild(row);
     });

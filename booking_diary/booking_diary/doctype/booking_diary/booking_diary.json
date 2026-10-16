@@ -13,8 +13,11 @@
   "customer",
   "customer_user",
   "status",
-  "payment_status",
+  "booking_type",
+  "repeat_until",
+  "booking_series_id",
   "booking_source",
+  "payment_status",
   "remarks"
  ],
  "fields": [
@@ -89,12 +92,33 @@
    "options": "Customer\nStaff",
    "read_only": 1,
    "reqd": 1
+  },
+  {
+   "fieldname": "booking_type",
+   "fieldtype": "Select",
+   "label": "Booking Type",
+   "options": "Single Slot\nRecurring",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.booking_type==\"Recurring\"",
+   "fieldname": "repeat_until",
+   "fieldtype": "Date",
+   "label": "Repeat Until",
+   "mandatory_depends_on": "eval:doc.booking_type==\"Daily Recurring\""
+  },
+  {
+   "depends_on": "eval:doc.booking_type==\"Recurring\"",
+   "fieldname": "booking_series_id",
+   "fieldtype": "Data",
+   "label": "Booking Series ID",
+   "mandatory_depends_on": "eval:doc.booking_type==\"Daily Recurring\""
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-15 13:55:24.023493",
+ "modified": "2026-10-16 16:34:12.967250",
  "modified_by": "Administrator",
  "module": "Booking Diary",
  "name": "Booking Diary",
