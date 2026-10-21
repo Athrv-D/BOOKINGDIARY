@@ -182,35 +182,66 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
         }
 
     # Get all availability periods for this resource/day
-    availabilities = frappe.get_all(
-        "Availability",
-        filters={
-            "resource": resource,
-            "day_of_week": day_name,
-            "available": 1,
-        },
-        fields=["start_time", "end_time"],
-        order_by="start_time asc",
+    
+  
+    availabilities = frappe.db.sql(
+        """
+        SELECT child.start_time, child.end_time
+        FROM `tabAvailability` AS parent
+        INNER JOIN `tabAvailability Day` AS child
+            ON child.parent = parent.name
+        WHERE parent.resource = %s
+            AND parent.availability_type = 'Multiple Days'
+            AND child.parenttype = 'Availability'
+            AND child.parentfield = 'weekly_schedule'
+            AND child.day_of_week = %s
+            AND child.available = 1
+
+        UNION ALL
+
+        SELECT parent.start_time, parent.end_time
+        FROM `tabAvailability` AS parent
+        WHERE parent.resource = %s
+            AND parent.availability_type = 'Single Day'
+            AND parent.day_of_week = %s
+            AND parent.available = 1
+
+        ORDER BY start_time ASC
+        """,
+        (resource, day_name, resource, day_name),
+        as_dict=True,
     )
 
-    # Get existing bookings for this resource/date
-    bookings = frappe.get_all(
-        "Booking Diary",
-        filters={
-            "resource": resource,
-            "booking_date": booking_date,
-            "status": ["not in", ["Cancelled", "Draft", "No Show", "Completed",]],
-        },
-        fields=[
-            "name",
-            "booking_id",
-            "start_time",
-            "end_time",
-            "customer",
-            "customer_user",
-            "status",
-        ],
-        order_by="start_time asc",
+
+        # Get single bookings on this date and recurring bookings
+    # whose date range includes this date.
+    bookings = frappe.db.sql(
+        """
+        SELECT
+            name,
+            booking_id,
+            start_time,
+            end_time,
+            customer,
+            customer_user,
+            status
+        FROM `tabBooking Diary`
+        WHERE resource = %s
+        AND status NOT IN (
+            'Cancelled', 'Draft', 'No Show', 'Completed'
+        )
+        AND (
+            booking_date = %s
+            OR (
+                booking_type = 'Recurring'
+                AND booking_date <= %s
+                AND repeat_until >= %s
+            )
+        )
+        ORDER BY start_time ASC
+        """,
+        (resource, booking_date, booking_date, booking_date),
+        as_dict=True,
     )
     current_user = frappe.session.user
     manager = is_booking_manager(current_user)
@@ -341,6 +372,41 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
         "blackout_reason": None,
         "time_zone":resource_timezone,
     
+    }
+
+@frappe.whitelist()
+def get_multi_day_schedule(
+    resource,
+    start_date,
+    end_date,
+    slot_duration=DEFAULT_SLOT_DURATION,
+    user_timezone=None,
+):
+    start_date = frappe.utils.getdate(start_date)
+    end_date = frappe.utils.getdate(end_date)
+
+    if end_date < start_date:
+        frappe.throw("End date cannot be before start date.")
+
+    schedules = []
+    current_date = start_date
+
+    while current_date <= end_date:
+        schedule = get_resource_schedule(
+            resource=resource,
+            booking_date=current_date,
+            slot_duration=int(slot_duration),
+            user_timezone=user_timezone,
+        )
+
+        schedules.append(schedule)
+        current_date = frappe.utils.add_days(current_date, 1)
+
+    return {
+        "resource": resource,
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "schedules": schedules,
     }
 
 def is_booking_manager(user=None):

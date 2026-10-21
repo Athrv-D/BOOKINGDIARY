@@ -1,162 +1,3 @@
-# import frappe
-# from frappe.model.document import Document
-
-
-# class BookingDiary(Document):
-
-#     def validate(self):
-#         self.validate_time()
-#         self.validate_future_booking()
-#         self.validate_blackout()
-#         self.validate_availability()
-#         self.validate_conflict()
-
-#     def validate_time(self):
-#         if self.start_time >= self.end_time:
-#             frappe.throw("End Time must be after Start Time.")
-
-    
-     
-#     def validate_future_booking(self):
-#         from datetime import datetime
-#         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
-#         booking_date = frappe.utils.getdate(self.booking_date)
-
-#         resource_timezone = frappe.db.get_value(
-#             "Resource",
-#             self.resource,
-#             "time_zone",
-#         )
-
-#         if not resource_timezone:
-#             frappe.throw(
-#                 f"Please set a Time Zone for resource {self.resource}."
-#             )
-
-#         try:
-#             timezone = ZoneInfo(resource_timezone)
-#         except (ZoneInfoNotFoundError, ValueError):
-#             frappe.throw(
-#                 f"Invalid time zone '{resource_timezone}' "
-#                 f"configured for resource {self.resource}."
-#             )
-
-#         current_datetime = datetime.now(timezone)
-
-#         booking_start = datetime.combine(
-#             booking_date,
-#             frappe.utils.get_time(self.start_time),
-#         ).replace(tzinfo=timezone)
-
-#         if booking_start <= current_datetime:
-#             frappe.throw(
-#                 f"Cannot book a time that has already passed "
-#                 f"in the resource's time zone ({resource_timezone})."
-#             )
-
-
-    
-#     def validate_blackout(self):
-#         blackouts = frappe.get_all(
-#         "Blackout Date",
-#         filters={
-#             "blackout_date": self.booking_date,
-#         },
-#         fields=[
-#             "resource",
-#             "reason",
-#             "applies_globally",
-#         ],
-#     )
-
-#         for blackout in blackouts:
-#          if (
-#             blackout.applies_globally
-#             or blackout.resource == self.resource
-#         ):
-#             reason = blackout.reason or "No reason provided"
-
-#             frappe.throw(
-#                 f"Cannot create booking for {self.resource} "
-#                 f"on {self.booking_date}. "
-#                 f"Reason: {reason}"
-#             )
-
-
-#     def validate_availability(self):
-#         day_name = frappe.utils.getdate(
-#             self.booking_date
-#         ).strftime("%A")
-
-#         availabilities = frappe.get_all(
-#             "Availability",
-#             filters={
-#                 "resource": self.resource,
-#                 "day_of_week": day_name,
-#                 "available": 1,
-#             },
-#             fields=["start_time", "end_time"],
-#             order_by="start_time asc",
-#         )
-
-#         if not availabilities:
-#             frappe.throw(
-#                 f"{self.resource} is not available on {day_name}."
-#             )
-
-#         def convert_time(value):
-#             value = str(value)
-#             hours, minutes, seconds = value.split(":")[:3]
-
-#             return (
-#                 int(hours) * 3600
-#                 + int(minutes) * 60
-#                 + int(float(seconds))
-#             )
-
-#         booking_start = convert_time(self.start_time)
-#         booking_end = convert_time(self.end_time)
-
-#         booking_fits = any(
-#             booking_start >= convert_time(slot.start_time)
-#             and booking_end <= convert_time(slot.end_time)
-#             for slot in availabilities
-#         )
-
-#         if not booking_fits:
-#             frappe.throw(
-#                 f"Booking time is outside the available hours "
-#                 f"for {self.resource}."
-#             )
-#     def validate_conflict(self):
-#         conflicts = frappe.db.sql(
-#             """
-#             SELECT name
-#             FROM `tabBooking Diary`
-#             WHERE resource = %s
-#               AND booking_date = %s
-#               AND name != %s
-#               AND status NOT IN ('Cancelled', 'Draft', 'No Show', 'Completed')
-#               AND start_time < %s
-#               AND end_time > %s
-#             """,
-#             (
-#                 self.resource,
-#                 self.booking_date,
-#                 self.name or "",
-#                 self.end_time,
-#                 self.start_time,
-#             ),
-#             as_dict=True,
-#         )
-
-#         if conflicts:
-#             frappe.throw(
-#                 "This resource is already booked during the selected time."
-#             )
-
-
 
 import frappe
 from datetime import timedelta
@@ -176,8 +17,16 @@ ALLOWED_STATUS_TRANSITIONS = {
 
 
 class BookingDiary(Document):
+    def set_booking_series_id(self):
+        if self.booking_type != "Recurring":
+            self.booking_series_id = None
+            return
+
+        if not self.booking_series_id:
+            self.booking_series_id = frappe.generate_hash(length=12)
 
     def validate(self):
+        self.set_booking_series_id()
         self.set_booking_source()
         self.validate_customer_ownership()
         self.validate_status_transition()
@@ -383,20 +232,51 @@ class BookingDiary(Document):
                     f"on {self.booking_date}. Reason: {reason}"
                 )
 
+   
     def validate_availability(self):
         day_name = frappe.utils.getdate(
             self.booking_date
         ).strftime("%A")
 
-        availabilities = frappe.get_all(
-            "Availability",
-            filters={
-                "resource": self.resource,
-                "day_of_week": day_name,
-                "available": 1,
-            },
-            fields=["start_time", "end_time"],
-            order_by="start_time asc",
+        # 1. Get availability configured using the old Single Day fields.
+        # Blank availability_type is included for legacy records.
+        single_day_availability = frappe.db.sql(
+            """
+            SELECT start_time, end_time
+            FROM `tabAvailability`
+            WHERE resource = %s
+            AND day_of_week = %s
+            AND available = 1
+            AND (
+                availability_type = 'Single Day'
+                OR IFNULL(availability_type, '') = ''
+            )
+            """,
+            (self.resource, day_name),
+            as_dict=True,
+        )
+
+        # 2. Get availability configured through the Multiple Days child table.
+        multiple_day_availability = frappe.db.sql(
+            """
+            SELECT child.start_time, child.end_time
+            FROM `tabAvailability Day` child
+            INNER JOIN `tabAvailability` parent
+                ON child.parent = parent.name
+            WHERE parent.resource = %s
+            AND parent.availability_type = 'Multiple Days'
+            AND child.parenttype = 'Availability'
+            AND child.parentfield = 'weekly_schedule'
+            AND child.day_of_week = %s
+            AND child.available = 1
+            """,
+            (self.resource, day_name),
+            as_dict=True,
+        )
+
+        # 3. Combine both availability types.
+        availabilities = (
+            single_day_availability + multiple_day_availability
         )
 
         if not availabilities:
@@ -413,6 +293,24 @@ class BookingDiary(Document):
                 + int(minutes) * 60
                 + int(float(seconds))
             )
+
+    
+        booking_start = convert_time(self.start_time)
+        booking_end = convert_time(self.end_time)
+
+        booking_fits = any(
+            booking_start >= convert_time(slot.start_time)
+            and booking_end <= convert_time(slot.end_time)
+            for slot in availabilities
+        )
+
+        if not booking_fits:
+            frappe.throw(
+                f"Booking time is outside in {day_name} available hours "
+                f"for {self.resource}."
+            )
+
+        
 
         booking_start = convert_time(self.start_time)
         booking_end = convert_time(self.end_time)
@@ -569,13 +467,21 @@ class BookingDiary(Document):
             is_admin
             or is_manager
         )
+        def _norm(field, value):
+            if not value:
+                return None
+            if field in ("start_time", "end_time"):
+                return str(frappe.utils.get_time(value))
+            if field == "booking_date":
+                return str(frappe.utils.getdate(value))
+            return value
         # Customers cannot modify booking details once the booking
         # has progressed beyond Draft or Pending.
         if not is_staff and "Booking User" in roles:
             if previous_doc.status not in {"Draft", "Pending"}:
 
                 for field in protected_fields:
-                    if self.get(field) != previous_doc.get(field):
+                    if _norm(field,self.get(field)) != _norm(field,previous_doc.get(field)):
                         frappe.throw(
                             "Booking details cannot be changed "
                             "after the booking is confirmed or closed."
@@ -641,3 +547,51 @@ def get_my_booking(booking_name):
         "status": booking.status,
         "payment_status": booking.payment_status,
     }
+
+
+from booking_diary.services.booking_schedule import DEFAULT_SLOT_DURATION
+@frappe.whitelist()
+def get_multi_day_schedule(
+    resource,
+    start_date,
+    end_date,
+    slot_duration=DEFAULT_SLOT_DURATION,
+    user_timezone=None,
+):
+    start_date = frappe.utils.getdate(start_date)
+    end_date = frappe.utils.getdate(end_date)
+
+    if end_date < start_date:
+        frappe.throw("End date cannot be before start date.")
+
+    if (end_date - start_date).days > 90:
+        frappe.throw("The date range cannot exceed 91 days.")
+
+    schedules = []
+    current_date = start_date
+
+    while current_date <= end_date:
+        daily_schedule = get_resource_schedule(
+            resource=resource,
+            booking_date=current_date,
+            slot_duration=int(slot_duration),
+            user_timezone=user_timezone,
+        )
+
+        schedules.append({
+            "date": str(current_date),
+            "schedule": daily_schedule,
+        })
+
+        current_date = frappe.utils.add_days(current_date, 1)
+
+    return {
+        "resource": resource,
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "schedules": schedules,
+    }
+@frappe.whitelist()
+def is_booking_user():
+    return "Booking User" in frappe.get_roles(frappe.session.user)
+    

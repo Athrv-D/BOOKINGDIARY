@@ -9,7 +9,9 @@
   "day_of_week",
   "start_time",
   "end_time",
-  "available"
+  "available",
+  "availability_type",
+  "weekly_schedule"
  ],
  "fields": [
   {
@@ -21,73 +23,65 @@
    "reqd": 1
   },
   {
+   "depends_on": "eval:doc.availability_type == \"Single Day\"",
    "fieldname": "day_of_week",
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Day of Week",
+   "mandatory_depends_on": "eval:doc.availability_type == \"Single Day\"",
    "options": "Monday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday",
    "reqd": 1
   },
   {
+   "depends_on": "eval:doc.availability_type == \"Single Day\"",
    "fieldname": "start_time",
    "fieldtype": "Time",
    "in_list_view": 1,
    "label": "Start Time",
+   "mandatory_depends_on": "eval:doc.availability_type == \"Single Day\"",
    "reqd": 1
   },
   {
+   "depends_on": "eval:doc.availability_type == \"Single Day\"",
    "fieldname": "end_time",
    "fieldtype": "Time",
    "in_list_view": 1,
    "label": "End Time",
+   "mandatory_depends_on": "eval:doc.availability_type == \"Single Day\"",
    "reqd": 1
   },
   {
    "default": "1",
+   "depends_on": "eval:doc.availability_type == \"Single Day\"",
    "fieldname": "available",
    "fieldtype": "Check",
-   "label": "Available"
+   "label": "Available",
+   "mandatory_depends_on": "eval:doc.availability_type == \"Single Day\""
+  },
+  {
+   "fieldname": "availability_type",
+   "fieldtype": "Select",
+   "label": "Availability Type",
+   "options": "Single Day\nMultiple Days",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.availability_type == \"Multiple Days\"",
+   "fieldname": "weekly_schedule",
+   "fieldtype": "Table",
+   "label": "Weekly Schedule",
+   "options": "Availability Day"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-15 12:14:45.132493",
+ "modified": "2026-10-19 16:50:01.853083",
  "modified_by": "Administrator",
  "module": "Booking Diary",
  "name": "Availability",
  "owner": "Administrator",
- "permissions": [
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
-  },
-  {
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "role": "Booking User"
-  },
-  {
-   "create": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "Booking Manager",
-   "write": 1
-  }
- ],
+ "permissions": [],
  "row_format": "Dynamic",
  "rows_threshold_for_grid_search": 20,
  "sort_field": "modified",

@@ -1,6 +1,25 @@
  frappe.ui.form.on("Booking Diary", {
+    
+
+    // Keep your existing onload logic below.
     onload(frm) {
         if (!frm.is_new()) return;
+  frappe.call({
+    method: "booking_diary.booking_diary.doctype.booking_diary.booking_diary.is_booking_user",
+    callback(r) {
+        if (
+            r.message === true &&
+            frm.is_new() &&
+            !frm.doc.customer_user
+        ) {
+            frm.set_value(
+                "customer_user",
+                frappe.session.user
+            );
+        }
+    }
+});
+    
 
         const params = new URLSearchParams(window.location.search);
 
@@ -33,12 +52,25 @@
     refresh(frm) {
         updateBookingTimezonePreview(frm);
     },
+    
+    
+booking_type(frm) {
+    if (frm.doc.booking_type === "Recurring") {
+        if (!frm.doc.booking_series_id) {
+            frm.set_value(
+                "booking_series_id",
+                frappe.utils.get_random(12)
+            );
+        }
+    } else {
+        frm.set_value("booking_series_id", "");
 
-    booking_type(frm) {
-    if (frm.doc.booking_type !== "Daily Recurring") {
-        frm.set_value("repeat_until", "");
+        if (frm.doc.repeat_until) {
+            frm.set_value("repeat_until", "");
+        }
     }
 },
+
     resource(frm) {
         updateBookingTimezonePreview(frm);
     },
