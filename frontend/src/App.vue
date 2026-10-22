@@ -79,7 +79,6 @@ async function loadSchedule() {
               dateKey(end),
               userTimezone.value,
             )
-            console.log(schedule)
 
         return { resource, schedule }
       }),
@@ -444,7 +443,7 @@ async function createBooking() {
   try {
     const slot = selectedBookingSlot.value
 
-    await createBooking({
+    await submitBooking({
       resource: slot.resource,
       bookingDate: slot.bookingDate,
       startTime: slot.startTime,
@@ -461,6 +460,93 @@ async function createBooking() {
   }
 }
 
+const bookingFormOpen = ref(false)
+
+const bookingForm = ref({
+  resource: '',
+  bookingDate: dateKey(selectedDate.value),
+  startTime: '09:00:00',
+  endTime: '10:00:00',
+  bookingType: 'Single Slot',
+  repeatUntil: '',
+  customer: '',
+  remarks: '',
+})
+
+function openNewBooking() {
+  bookingError.value = ''
+  bookingSuccess.value = ''
+
+  const slot = selectedBookingSlot.value
+
+  bookingForm.value = {
+    resource: slot?.resource || resources.value[0]?.name || '',
+    bookingDate: slot?.bookingDate || dateKey(selectedDate.value),
+    startTime: slot?.startTime || '09:00:00',
+    endTime: slot?.endTime || '10:00:00',
+    bookingType: 'Single Slot',
+    repeatUntil: '',
+    customer: '',
+    remarks: '',
+  }
+
+  bookingFormOpen.value = true
+}
+
+async function submitManualBooking() {
+  bookingError.value = ''
+  bookingSuccess.value = ''
+
+  const form = bookingForm.value
+
+  if (!form.resource || !form.bookingDate || !form.startTime || !form.endTime) {
+    bookingError.value = 'Please fill in all required fields.'
+    return
+  }
+
+  if (form.startTime >= form.endTime) {
+    bookingError.value = 'End time must be after start time.'
+    return
+  }
+
+  if (
+    form.bookingType === 'Recurring' &&
+    (!form.repeatUntil || form.repeatUntil < form.bookingDate)
+  ) {
+    bookingError.value = 'Please select a valid repeat-until date.'
+    return
+  }
+
+  bookingSubmitting.value = true
+
+  try {
+    await submitBooking({
+      resource: form.resource,
+      bookingDate: form.bookingDate,
+      startTime: form.startTime.length === 5
+        ? `${form.startTime}:00`
+        : form.startTime,
+      endTime: form.endTime.length === 5
+        ? `${form.endTime}:00`
+        : form.endTime,
+      bookingType: form.bookingType,
+      repeatUntil: form.bookingType === 'Recurring'
+        ? form.repeatUntil
+        : null,
+      customer: form.customer.trim(),
+      remarks: form.remarks.trim(),
+    })
+
+    bookingSuccess.value = 'Booking created successfully.'
+    bookingFormOpen.value = false
+    selectedBookingSlot.value = null
+    await loadSchedule()
+  } catch (error) {
+    bookingError.value = error.message || 'Could not create booking.'
+  } finally {
+    bookingSubmitting.value = false
+  }
+}
 
 
 const selectedBookingSlot = ref(null)
@@ -540,17 +626,150 @@ function selectSlot(resource, date, hour) {
   <p v-if="bookingSuccess" class="mt-2 text-sm text-green-700">
     {{ bookingSuccess }}
   </p>
+  
 
   <button
     v-if="selectedBookingSlot"
-    @click="createBooking"
+    @click="openNewBooking"
     :disabled="bookingSubmitting"
     class="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
   >
     {{ bookingSubmitting ? 'Creating booking…' : 'Confirm booking' }}
   </button>
 </div>
+<div
+  v-if="bookingFormOpen"
+  class="mx-5 mt-4 rounded-xl border border-slate-200 bg-white p-5 md:mx-8"
+>
+  <div class="mb-5 flex items-center justify-between">
+    <h2 class="text-lg font-bold text-slate-900">New Booking</h2>
+    <button
+      type="button"
+      @click="bookingFormOpen = false"
+      class="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+    >
+      Cancel
+    </button>
+  </div>
 
+  <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <label class="block text-sm font-medium text-slate-700">
+      Resource *
+      <select
+        v-model="bookingForm.resource"
+        required
+        class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
+      >
+        <option value="" disabled>Select resource</option>
+        <option
+          v-for="resource in resources"
+          :key="resource.name"
+          :value="resource.name"
+        >
+          {{ resource.resource_name || resource.name }}
+        </option>
+      </select>
+    </label>
+
+    <label class="block text-sm font-medium text-slate-700">
+      Booking date *
+      <input
+        v-model="bookingForm.bookingDate"
+        type="date"
+        required
+        class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"
+      />
+    </label>
+
+    <label class="block text-sm font-medium text-slate-700">
+      Start time *
+      <input
+        v-model="bookingForm.startTime"
+        type="time"
+        required
+        class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"
+      />
+    </label>
+
+    <label class="block text-sm font-medium text-slate-700">
+      End time *
+      <input
+        v-model="bookingForm.endTime"
+        type="time"
+        required
+        class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"
+      />
+    </label>
+
+    <label class="block text-sm font-medium text-slate-700">
+      Booking type *
+      <select
+        v-model="bookingForm.bookingType"
+        class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
+      >
+        <option value="Single Slot">Single Slot</option>
+        <option value="Recurring">Recurring</option>
+      </select>
+    </label>
+
+    <label
+      v-if="bookingForm.bookingType === 'Recurring'"
+      class="block text-sm font-medium text-slate-700"
+    >
+      Repeat until *
+      <input
+        v-model="bookingForm.repeatUntil"
+        type="date"
+        required
+        :min="bookingForm.bookingDate"
+        class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"
+      />
+    </label>
+
+    <label class="block text-sm font-medium text-slate-700 md:col-span-2">
+      Customer name
+      <input
+        v-model="bookingForm.customer"
+        type="text"
+        maxlength="140"
+        placeholder="Optional"
+        class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"
+      />
+    </label>
+
+    <label class="block text-sm font-medium text-slate-700 md:col-span-2">
+      Remarks
+      <textarea
+        v-model="bookingForm.remarks"
+        rows="3"
+        placeholder="Optional notes"
+        class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"
+      ></textarea>
+    </label>
+  </div>
+
+  <p class="mt-3 text-xs text-slate-500">
+    Booking requests are checked against resource availability and booking rules when submitted.
+  </p>
+
+  <div class="mt-5 flex justify-end gap-3">
+    <button
+      type="button"
+      @click="bookingFormOpen = false"
+      class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+    >
+      Cancel
+    </button>
+    <button
+      type="button"
+      @click="submitManualBooking"
+      :disabled="bookingSubmitting"
+      class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+    >
+      {{ bookingSubmitting ? 'Submitting…' : 'Submit booking' }}
+    </button>
+  </div>
+</div>
 
       <div v-if="activeView === 'Resource Desk'" class="p-4 md:p-8">
         <div class="mb-5 flex flex-wrap items-end justify-between gap-4">
