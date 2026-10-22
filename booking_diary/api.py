@@ -29,3 +29,21 @@ def get_my_bookings():
     )
 
     return bookings
+
+@frappe.whitelist()
+def get_resources():
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in to view resources.")
+
+    return frappe.get_list(
+        "Resource",
+        fields=[
+            "name",
+            "resource_name",
+            "resource_type",
+            "available",
+            "time_zone",
+        ],
+        order_by="resource_name asc",
+        page_length=500,
+    )

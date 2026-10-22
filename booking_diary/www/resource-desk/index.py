@@ -114,3 +114,18 @@ def get_schedule(resource, booking_date, slot_duration=30):
         booking_date=booking_date,
         slot_duration=int(slot_duration),
     )
+
+@frappe.whitelist()
+def get_resources():
+    return frappe.get_list(
+        "Resource",
+        fields=[
+            "name",
+            "resource_name",
+            "resource_type",
+            "available",
+            "time_zone",
+        ],
+        order_by="resource_name asc",
+        page_length=500,
+    )
