@@ -1,7 +1,12 @@
  
 <script setup>
-import { computed, onMounted,ref } from 'vue'
-import { getResources } from './api'
+import { computed, onMounted, ref, watch } from 'vue'
+import {
+  getResources,
+  getUserTimezone,
+  getMultiDaySchedule,
+  getUserDaySchedule,
+} from './api'
 
 const activeView = ref('Resource Desk')
 const calendarView = ref('Week')
@@ -21,7 +26,14 @@ const resources = ref([])
 const resourcesLoading = ref(false)
 const resourcesError = ref('')
 
-onMounted(async () => {
+
+const userTimezone = ref('UTC')
+const bookings = ref([])
+const scheduleLoading = ref(false)
+const scheduleError = ref('')
+
+ 
+async function loadResources() {
   resourcesLoading.value = true
   resourcesError.value = ''
 
@@ -33,13 +45,119 @@ onMounted(async () => {
   } finally {
     resourcesLoading.value = false
   }
+}
+
+async function loadSchedule() {
+  if (!resources.value.length) return
+
+  scheduleLoading.value = true
+  scheduleError.value = ''
+
+  try {
+    const date = selectedDate.value
+    const start = calendarView.value === 'Month'
+      ? new Date(date.getFullYear(), date.getMonth(), 1)
+      : startOfWeek(date)
+
+    const end = calendarView.value === 'Month'
+      ? new Date(date.getFullYear(), date.getMonth() + 1, 0)
+      : addDays(start, 6)
+
+    const results = await Promise.all(
+      resources.value.map(async (resource) => {
+        const schedule = calendarView.value === 'Day'
+          ? await getUserDaySchedule(
+              resource.name,
+              dateKey(date),
+              userTimezone.value,
+            )
+          : await getMultiDaySchedule(
+              resource.name,
+              dateKey(start),
+              dateKey(end),
+              userTimezone.value,
+            )
+            console.log(schedule)
+
+        return { resource, schedule }
+      }),
+    )
+
+    bookings.value = results.flatMap(({ resource, schedule }) => {
+      const schedules = schedule.schedules ?? []
+
+
+      return schedules.flatMap((daySchedule) =>
+        (daySchedule.bookings ?? []).map((booking) => ({
+          id: booking.booking_id ?? booking.name,
+          title: booking.customer || 'Booked',
+          resource: resource.name,
+          resourceLabel:resource.resource_name || resource.name,
+          date: daySchedule.date,
+          start: booking.start_time_user_datetime
+            ? new Date(booking.start_time_user_datetime)
+            : new Date(`${daySchedule.date}T${booking.start_time}`),
+          end: booking.end_time_user_datetime
+            ? new Date(booking.end_time_user_datetime)
+            : new Date(`${daySchedule.date}T${booking.end_time}`),
+          status: booking.status || 'Booked',
+          color: 'blue',
+        })),
+      )
+    })
+  } catch (error) {
+    console.error('Failed to load schedule:', error)
+    scheduleError.value = error.message
+  } finally {
+    scheduleLoading.value = false
+  }
+  
+
+}
+
+watch([selectedDate, calendarView], () => {
+  if (resources.value.length) {
+    loadSchedule()
+  }
 })
+
+onMounted(async () => {
+  try {
+    userTimezone.value = await getUserTimezone()
+  } catch (error) {
+    console.error('Failed to load user timezone:', error)
+  }
+
+  await loadResources()
+  await loadSchedule()
+})
+
 
 function dateKey(date) {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
+}
+function timeToMinutes(value) {
+  if (value instanceof Date) {
+    return value.getHours() * 60 + value.getMinutes()
+  }
+
+  if (typeof value === 'string') {
+    const time = value.includes('T')
+      ? new Date(value)
+      : null
+
+    if (time && !Number.isNaN(time.getTime())) {
+      return time.getHours() * 60 + time.getMinutes()
+    }
+
+    const [hours, minutes] = value.split(':').map(Number)
+    return (hours || 0) * 60 + (minutes || 0)
+  }
+
+  return 0
 }
 
 function addDays(date, amount) {
@@ -64,17 +182,37 @@ function formatDate(date, options) {
 }
 
 function timeLabel(time) {
-  const [hour, minute] = time.split(':').map(Number)
-  const date = new Date()
-  date.setHours(hour, minute, 0, 0)
-  return formatDate(date, { hour: 'numeric', minute: '2-digit' })
-}
+  if (time instanceof Date) {
+    return time.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  }
 
+  if (typeof time !== 'string') {
+    return ''
+  }
+
+  if (time.includes('T')) {
+    const date = new Date(time)
+
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+    }
+  }
+
+  const [hours, minutes] = time.split(':')
+  return `${hours.padStart(2, '0')}:${(minutes || '00').padStart(2, '0')}`
+}
 function offsetDate(days) {
   return dateKey(addDays(new Date(), days))
 }
 
-// Temporary UI data only. Replace with Frappe API data in the next stage.
 const demoBookings = ref([
   { id: 'DEMO-001', title: 'Team Meeting', resource: 'Conference Room A', date: offsetDate(0), start: '09:00', end: '10:00', status: 'Confirmed', color: 'blue' },
   { id: 'DEMO-002', title: 'Client Presentation', resource: 'Conference Room A', date: offsetDate(0), start: '11:00', end: '12:30', status: 'Confirmed', color: 'violet' },
@@ -87,18 +225,22 @@ const demoBookings = ref([
 ])
 
 const filteredBookings = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase()
-  return demoBookings.value.filter((booking) => {
+  return bookings.value.filter((booking) => {
     const matchesResource =
       resourceFilter.value === 'All resources' ||
       booking.resource === resourceFilter.value
+
     const matchesStatus =
       statusFilter.value === 'All statuses' ||
       booking.status === statusFilter.value
+
+    const query = searchQuery.value.trim().toLowerCase()
     const matchesSearch =
       !query ||
-      [booking.title, booking.resource, booking.id, booking.status]
-        .some((value) => value.toLowerCase().includes(query))
+      booking.title?.toLowerCase().includes(query) ||
+      booking.resource?.toLowerCase().includes(query) ||
+      booking.id?.toLowerCase().includes(query)
+
     return matchesResource && matchesStatus && matchesSearch
   })
 })
@@ -141,7 +283,7 @@ function bookingsOn(date) {
   const key = dateKey(date)
   return filteredBookings.value
     .filter((booking) => booking.date === key && booking.status !== 'Cancelled')
-    .sort((a, b) => a.start.localeCompare(b.start))
+    .sort((a, b) => timeToMinutes(a.start)-timeToMinutes(b.start))
 }
 
 function bookingsForResource(resource, date = selectedDate.value) {
@@ -175,15 +317,53 @@ function selectDay(date) {
 }
 
 function bookingStyle(booking) {
-  const [startHour, startMinute] = booking.start.split(':').map(Number)
-  const [endHour, endMinute] = booking.end.split(':').map(Number)
-  const start = startHour * 60 + startMinute
-  const end = endHour * 60 + endMinute
+  const startMinutes = timeToMinutes(booking.start)
+  const endMinutes = timeToMinutes(booking.end)
+
+  const top = ((startMinutes - 8 * 60) / 60) * 64
+  const height = Math.max(
+    ((endMinutes - startMinutes) / 60) * 64,
+    24
+  )
+
   return {
-    top: `${((start - 8 * 60) / 60) * 56}px`,
-    height: `${Math.max(((end - start) / 60) * 56 - 3, 25)}px`,
+    top: `${Math.max(top, 0)}px`,
+    height: `${height}px`,
+    background: booking.color,
   }
 }
+
+
+const TIMELINE_START_MINUTES = 0
+const TIMELINE_END_MINUTES = 24 * 60
+const TIMELINE_HOUR_WIDTH = 100
+
+function timelineBookingStyle(booking) {
+  const startMinutes = timeToMinutes(booking.start)
+  const endMinutes = timeToMinutes(booking.end)
+
+  const visibleStart = Math.max(
+    startMinutes,
+    TIMELINE_START_MINUTES,
+  )
+  const visibleEnd = Math.min(
+    endMinutes,
+    TIMELINE_END_MINUTES,
+  )
+
+  if (visibleEnd <= visibleStart) {
+    return { display: 'none' }
+  }
+
+  return {
+    left: `${(visibleStart - TIMELINE_START_MINUTES) / 60 * TIMELINE_HOUR_WIDTH}px`,
+    width: `${(visibleEnd - visibleStart) / 60 * TIMELINE_HOUR_WIDTH}px`,
+    top: '12px',
+    height: '72px',
+  }
+}
+
+
 
 function openBooking(booking) {
   window.alert(
@@ -232,9 +412,9 @@ function selectSlot(resource, date, hour) {
       <div class="m-4 hidden rounded-xl border border-slate-100 bg-slate-50 p-4 md:block">
         <div class="mb-2 flex items-center gap-2">
           <span class="h-2 w-2 rounded-full bg-amber-400"></span>
-          <p class="text-xs font-semibold text-slate-700">Prototype mode</p>
+          <p class="text-xs font-semibold text-slate-700">Live booking data</p>
         </div>
-        <p class="text-xs leading-5 text-slate-500">Calendar uses sample bookings. Live Frappe data will be connected next.</p>
+        <p class="text-xs leading-5 text-slate-500">Calendar uses bookings from Frappe.</p>
       </div>
     </aside>
 
@@ -257,7 +437,7 @@ function selectSlot(resource, date, hour) {
           </div>
           <div class="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
             <span class="h-2 w-2 rounded-full bg-amber-500"></span>
-            Sample data
+            Live data.
           </div>
         </div>
 
@@ -399,8 +579,8 @@ function selectSlot(resource, date, hour) {
               </div>
               <div v-for="resource in resources.filter(r => resourceFilter === 'All resources' || r.name === resourceFilter)" :key="resource.name" class="grid grid-cols-[190px_1fr] border-b border-slate-100">
                 <div class="border-r border-slate-200 p-4">
-                  <p class="text-sm font-semibold text-slate-800">{{ resource.name }}</p>
-                  <p class="mt-1 text-xs text-slate-400">{{ resource.type }}</p>
+                  <p class="text-sm font-semibold text-slate-800">{{resource.resource_name || resource.name }}</p>
+                  <p class="mt-1 text-xs text-slate-400">{{ resource.resource_type }}</p>
                   <p class="mt-2 text-xs text-slate-500">{{ bookingsForResource(resource.name).length }} bookings</p>
                 </div>
                 <div class="relative">
@@ -425,35 +605,98 @@ function selectSlot(resource, date, hour) {
             </div>
           </div>
 
-          <!-- TIMELINE VIEW -->
-          <div v-else class="overflow-x-auto">
-            <div class="min-w-[850px]">
-              <div class="grid grid-cols-[190px_repeat(12,minmax(48px,1fr))] border-b border-slate-200 bg-slate-50">
-                <div class="sticky left-0 z-[2] border-r border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">Resource</div>
-                <div v-for="hour in 12" :key="hour" class="border-r border-slate-100 px-1 py-3 text-center text-[10px] font-semibold text-slate-500">{{ String(hour + 7).padStart(2, '0') }}:00</div>
-              </div>
-              <div v-for="resource in resources.filter(r => resourceFilter === 'All resources' || r.name === resourceFilter)" :key="resource.name" class="grid grid-cols-[190px_repeat(12,minmax(48px,1fr))] border-b border-slate-100">
-                <div class="sticky left-0 z-[2] border-r border-slate-200 bg-white p-4">
-                  <p class="text-sm font-semibold text-slate-800">{{ resource.name }}</p>
-                  <p class="mt-1 text-xs text-slate-400">{{ resource.type }}</p>
-                </div>
-                <button v-for="hour in 12" :key="hour" @click="selectSlot(resource.name, selectedDate, hour + 7)" class="relative min-h-24 border-r border-slate-100 hover:bg-indigo-50/60">
-                  <span class="absolute inset-x-0 top-0 border-t border-dashed border-slate-100"></span>
-                  <span
-                    v-for="booking in bookingsForResource(resource.name).filter(b => Number(b.start.slice(0, 2)) === hour + 7)"
-                    :key="booking.id"
-                    @click.stop="openBooking(booking)"
-                    class="absolute inset-x-0.5 top-3 z-[1] overflow-hidden rounded border-l-[3px] px-1 py-2 text-left text-[10px] font-semibold"
-                    :class="booking.status === 'Pending' ? 'border-amber-400 bg-amber-50 text-amber-900' : booking.color === 'violet' ? 'border-violet-400 bg-violet-50 text-violet-900' : booking.color === 'emerald' ? 'border-emerald-400 bg-emerald-50 text-emerald-900' : 'border-blue-400 bg-blue-50 text-blue-900'"
-                  >{{ booking.title }}</span>
-                </button>
-              </div>
-              <p class="px-4 py-3 text-xs text-slate-400">Timeline prototype: select an empty cell to choose a potential booking slot.</p>
-            </div>
+          
+          
+<!-- TIMELINE VIEW -->
+<div v-else class="overflow-x-auto">
+  <div class="min-w-[2590px]">
+    <!-- Timeline header -->
+    <div class="grid grid-cols-[190px_2400px] border-b border-slate-200 bg-slate-50">
+      <div
+        class="sticky left-0 z-[3] border-r border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500"
+      >
+        Resource
+      </div>
+
+      <div class="relative h-10">
+        <div class="absolute inset-0 grid grid-cols-[repeat(24,100px)]">
+          <div
+            v-for="hour in 24"
+            :key="hour"
+            class="border-r border-slate-100 px-1 py-3 text-center text-[10px] font-semibold text-slate-500"
+          >
+            {{ String(hour - 1).padStart(2, '0') }}:00
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Resource rows -->
+    <div
+      v-for="resource in resources.filter(
+        r => resourceFilter === 'All resources' || r.name === resourceFilter
+      )"
+      :key="resource.name"
+      class="grid grid-cols-[190px_2400px] border-b border-slate-100"
+    >
+      <!-- Fixed resource column -->
+      <div class="sticky left-0 z-[2] border-r border-slate-200 bg-white p-4">
+        <p class="text-sm font-semibold text-slate-800">
+          {{ resource.resource_name || resource.name }}
+        </p>
+        <p class="mt-1 text-xs text-slate-400">
+          {{ resource.resource_type || resource.type || 'Resource' }}
+        </p>
+      </div>
+
+      <!-- 24-hour timeline track -->
+      <div class="relative min-h-24 w-[2400px]">
+        <!-- Hour grid and clickable empty slots -->
+        <div class="absolute inset-0 grid grid-cols-[repeat(24,100px)]">
+          <button
+            v-for="hour in 24"
+            :key="hour"
+            @click="selectSlot(resource.name, selectedDate, hour - 1)"
+            class="border-r border-slate-100 transition hover:bg-indigo-50/60"
+            :aria-label="`Select ${String(hour - 1).padStart(2, '0')}:00 for ${resource.resource_name || resource.name}`"
+          ></button>
+        </div>
+
+        <!-- Booking cards positioned by start and end time -->
+        <button
+          v-for="booking in bookingsForResource(resource.name).filter(
+            b => b.status !== 'Cancelled'
+          )"
+          :key="booking.id"
+          @click.stop="openBooking(booking)"
+          class="absolute z-[1] overflow-hidden rounded-md border-l-[3px] px-2 py-2 text-left text-xs shadow-sm transition hover:shadow-md"
+          :class="booking.status === 'Pending'
+            ? 'border-amber-400 bg-amber-50 text-amber-900'
+            : 'border-blue-400 bg-blue-50 text-blue-900'"
+          :style="timelineBookingStyle(booking)"
+          :title="`${booking.title}: ${timeLabel(booking.start)} – ${timeLabel(booking.end)}`"
+        >
+          <span class="block truncate font-semibold">
+            {{ booking.title }}
+          </span>
+          <span class="mt-1 block truncate text-[10px]">
+            {{ timeLabel(booking.start) }} – {{ timeLabel(booking.end) }}
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Timeline footer -->
+    <p class="border-t border-slate-100 px-4 py-3 text-xs text-slate-400">
+      Select an empty time slot to choose a potential booking time.
+    </p>
+  </div>
+</div>
+
+
 
           <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/70 px-4 py-3">
-            <p class="text-xs text-slate-500">{{ filteredBookings.length }} sample bookings match your filters.</p>
+            <p class="text-xs text-slate-500">{{ filteredBookings.length }} bookings match your filters.</p>
             <button @click="resourceFilter = 'All resources'; statusFilter = 'All statuses'; searchQuery = ''" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">Clear filters</button>
           </div>
         </section>
