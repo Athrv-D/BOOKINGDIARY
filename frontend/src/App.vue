@@ -148,6 +148,16 @@ function dateKey(date) {
   const d = String(date.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
 }
+function blackoutResourcesOn(date) {
+  const key = dateKey(date)
+
+  return resources.value.filter(resource =>
+    (resourceSchedules.value[resource.name] || []).some(
+      daySchedule =>
+        daySchedule.date === key && daySchedule.is_blackout
+    )
+  )
+}
 function timeToMinutes(value) {
   if (value instanceof Date) {
     return value.getHours() * 60 + value.getMinutes()
@@ -294,25 +304,10 @@ function bookingsOn(date) {
     .filter((booking) => booking.date === key && booking.status !== 'Cancelled')
     .sort((a, b) => timeToMinutes(a.start)-timeToMinutes(b.start))
 
-
-
-function blackoutResourcesOn(date) {
-  const key = dateKey(date)
-
-  return resources.value
-    .filter(resource =>
-      resourceFilter.value === 'All resources' ||
-      resource.name === resourceFilter.value
-    )
-    .filter(resource =>
-      (resourceSchedules.value[resource.name] || []).some(
-        daySchedule =>
-          daySchedule.date === key &&
-          daySchedule.is_blackout
-      )
-    )
 }
-}
+
+ 
+
 
 function bookingsForResource(resource, date = selectedDate.value) {
   return bookingsOn(date).filter((booking) => booking.resource === resource)
@@ -620,7 +615,14 @@ function selectSlot(resource, date, hour) {
                   <span class="block text-xs font-semibold uppercase tracking-wide text-slate-500">{{ formatDate(day, { weekday: 'short' }) }}</span>
                   <span class="mx-auto mt-2 flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold" :class="sameDay(day, new Date()) ? 'bg-indigo-600 text-white' : sameDay(day, selectedDate) ? 'bg-indigo-50 text-indigo-700' : 'text-slate-800'">{{ day.getDate() }}</span>
                   <span class="mt-1 block text-[10px] text-slate-400">{{ bookingsOn(day).length }} bookings</span>
+                         <span
+  v-if="blackoutResourcesOn(day).length"
+  class="mb-1 block rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700"
+>
+  Blackout
+</span>
                 </button>
+         
               </div>
               <div class="grid grid-cols-7">
                 <div v-for="day in weekDays" :key="dateKey(day)" class="min-h-[390px] border-r border-slate-100 p-2" :class="sameDay(day, new Date()) ? 'bg-indigo-50/30' : ''">
@@ -641,40 +643,6 @@ function selectSlot(resource, date, hour) {
             </div>
           </div>
 
-          <!-- DAY VIEW -->
-          <div v-else-if="calendarView === 'Day'" class="overflow-x-auto">
-            <div class="min-w-[680px]">
-              <div class="grid grid-cols-[190px_1fr] border-b border-slate-200 bg-slate-50">
-                <div class="border-r border-slate-200 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">Resource</div>
-                <div class="px-4 py-3 text-sm font-semibold text-slate-700">{{ formatDate(selectedDate, { weekday: 'long', month: 'short', day: 'numeric' }) }}</div>
-              </div>
-              <div v-for="resource in resources.filter(r => resourceFilter === 'All resources' || r.name === resourceFilter)" :key="resource.name" class="grid grid-cols-[190px_1fr] border-b border-slate-100">
-                <div class="border-r border-slate-200 p-4">
-                  <p class="text-sm font-semibold text-slate-800">{{resource.resource_name || resource.name }}</p>
-                  <p class="mt-1 text-xs text-slate-400">{{ resource.resource_type }}</p>
-                  <p class="mt-2 text-xs text-slate-500">{{ bookingsForResource(resource.name).length }} bookings</p>
-                </div>
-                <div class="relative">
-                  <div class="grid h-[896px] grid-rows-16">
-                    <button v-for="hour in 16" :key="hour" @click="selectSlot(resource.name, selectedDate, hour + 6)" class="relative border-b border-slate-100 text-left hover:bg-indigo-50/60">
-                      <span class="absolute left-2 top-1 text-[10px] text-slate-300">{{ String(hour + 6).padStart(2, '0') }}:00</span>
-                    </button>
-                  </div>
-                  <button
-                    v-for="booking in bookingsForResource(resource.name)"
-                    :key="booking.id"
-                    @click="openBooking(booking)"
-                    class="absolute left-16 right-3 z-[1] overflow-hidden rounded-lg border-l-4 p-2 text-left shadow-sm"
-                    :class="booking.status === 'Pending' ? 'border-amber-400 bg-amber-50 text-amber-950' : booking.color === 'violet' ? 'border-violet-400 bg-violet-50 text-violet-950' : booking.color === 'emerald' ? 'border-emerald-400 bg-emerald-50 text-emerald-950' : 'border-blue-400 bg-blue-50 text-blue-950'"
-                    :style="bookingStyle(booking)"
-                  >
-                    <span class="block truncate text-xs font-bold">{{ booking.title }}</span>
-                    <span class="mt-1 block text-[10px]">{{ timeLabel(booking.start) }} – {{ timeLabel(booking.end) }}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
 
           
           
@@ -718,6 +686,12 @@ function selectSlot(resource, date, hour) {
         <p class="mt-1 text-xs text-slate-400">
           {{ resource.resource_type || resource.type || 'Resource' }}
         </p>
+        <span
+  v-if="blackoutResourcesOn(selectedDate).some(r => r.name === resource.name)"
+  class="mt-2 inline-block rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700"
+>
+  Blackout
+</span>
       </div>
 
       <!-- 24-hour timeline track -->
