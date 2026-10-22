@@ -6,6 +6,7 @@ import {
   getUserTimezone,
   getMultiDaySchedule,
   getUserDaySchedule,
+  createBooking as submitBooking,
 } from './api'
 
 const activeView = ref('Resource Desk')
@@ -424,15 +425,55 @@ function openBooking(booking) {
   )
 }
 
-function createBooking() {
-  window.alert('Booking creation will be connected to the existing Frappe booking form in the next step.')
+
+const bookingSubmitting = ref(false)
+const bookingError = ref('')
+const bookingSuccess = ref('')
+
+async function createBooking() {
+  bookingError.value = ''
+  bookingSuccess.value = ''
+
+  if (!selectedBookingSlot.value) {
+    bookingError.value = 'Select an available slot first.'
+    return
+  }
+
+  bookingSubmitting.value = true
+
+  try {
+    const slot = selectedBookingSlot.value
+
+    await createBooking({
+      resource: slot.resource,
+      bookingDate: slot.bookingDate,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+    })
+
+    bookingSuccess.value = 'Booking created successfully.'
+    selectedBookingSlot.value = null
+    await loadSchedule()
+  } catch (error) {
+    bookingError.value = error.message || 'Could not create booking.'
+  } finally {
+    bookingSubmitting.value = false
+  }
 }
 
+
+
+const selectedBookingSlot = ref(null)
+
 function selectSlot(resource, date, hour) {
-  window.alert(
-    `Selected slot: ${resource}\n${dateKey(date)} at ${timeLabel(`${String(hour).padStart(2, '0')}:00`)}\n\nAvailability validation will connect to Frappe in the next step.`,
-  )
+  selectedBookingSlot.value = {
+    resource,
+    bookingDate: dateKey(date),
+    startTime: `${String(hour).padStart(2, '0')}:00:00`,
+    endTime: `${String(hour + 1).padStart(2, '0')}:00:00`,
+  }
 }
+
 </script>
 
 <template>
@@ -481,6 +522,35 @@ function selectSlot(resource, date, hour) {
           <span class="text-lg leading-none">+</span> New Booking
         </button>
       </header>
+      
+<div
+  v-if="selectedBookingSlot || bookingError || bookingSuccess"
+  class="mx-5 mt-4 rounded-lg border border-slate-200 bg-white p-4 md:mx-8"
+>
+  <p v-if="selectedBookingSlot" class="text-sm text-slate-700">
+    Selected: {{ selectedBookingSlot.resource }} ·
+    {{ selectedBookingSlot.bookingDate }} ·
+    {{ selectedBookingSlot.startTime }}–{{ selectedBookingSlot.endTime }}
+  </p>
+
+  <p v-if="bookingError" class="mt-2 text-sm text-red-700">
+    {{ bookingError }}
+  </p>
+
+  <p v-if="bookingSuccess" class="mt-2 text-sm text-green-700">
+    {{ bookingSuccess }}
+  </p>
+
+  <button
+    v-if="selectedBookingSlot"
+    @click="createBooking"
+    :disabled="bookingSubmitting"
+    class="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+  >
+    {{ bookingSubmitting ? 'Creating booking…' : 'Confirm booking' }}
+  </button>
+</div>
+
 
       <div v-if="activeView === 'Resource Desk'" class="p-4 md:p-8">
         <div class="mb-5 flex flex-wrap items-end justify-between gap-4">
@@ -715,7 +785,7 @@ function selectSlot(resource, date, hour) {
     .flatMap(daySchedule => daySchedule.slots || [])
     .filter(slot => slot.status === 'available')"
   :key="`${resource.name}-${slot.start_time_user_datetime}`"
-  class="absolute top-0 h-full bg-green-400/10 pointer-events-none"
+  class="absolute top-0 h-full bg-gray-400/10 pointer-events-none"
   :style="timelineAvailabilityStyle(slot, selectedDate)"
 ></div>
 
@@ -725,7 +795,7 @@ function selectSlot(resource, date, hour) {
             v-for="hour in 24"
             :key="hour"
             @click="selectSlot(resource.name, selectedDate, hour - 1)"
-            class="border-r border-slate-100 transition hover:bg-indigo-50/60"
+            class="border-r border-slate-100 transition hover:bg-indigo-200/60"
             :aria-label="`Select ${String(hour - 1).padStart(2, '0')}:00 for ${resource.resource_name || resource.name}`"
           ></button>
         </div>
