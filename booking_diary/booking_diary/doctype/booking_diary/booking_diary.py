@@ -549,7 +549,7 @@ def get_my_booking(booking_name):
     }
 
 
-from booking_diary.services.booking_schedule import DEFAULT_SLOT_DURATION
+from booking_diary.services.booking_schedule import DEFAULT_SLOT_DURATION, get_resource_schedule
 @frappe.whitelist()
 def get_multi_day_schedule(
     resource,
