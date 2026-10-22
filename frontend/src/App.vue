@@ -293,6 +293,25 @@ function bookingsOn(date) {
   return filteredBookings.value
     .filter((booking) => booking.date === key && booking.status !== 'Cancelled')
     .sort((a, b) => timeToMinutes(a.start)-timeToMinutes(b.start))
+
+
+
+function blackoutResourcesOn(date) {
+  const key = dateKey(date)
+
+  return resources.value
+    .filter(resource =>
+      resourceFilter.value === 'All resources' ||
+      resource.name === resourceFilter.value
+    )
+    .filter(resource =>
+      (resourceSchedules.value[resource.name] || []).some(
+        daySchedule =>
+          daySchedule.date === key &&
+          daySchedule.is_blackout
+      )
+    )
+}
 }
 
 function bookingsForResource(resource, date = selectedDate.value) {
@@ -552,16 +571,29 @@ function selectSlot(resource, date, hour) {
               </div>
               <div class="grid grid-cols-7">
                 <div
-                  v-for="day in monthDays"
-                  :key="dateKey(day)"
-                  class="min-h-28 border-b border-r border-slate-100 p-2"
-                  :class="day.getMonth() !== selectedDate.getMonth() ? 'bg-slate-50/70' : 'bg-white'"
+                 v-for="day in monthDays"
+  :key="dateKey(day)"
+  class="min-h-28 border-b border-r border-slate-100 p-2"
+  :class="[
+    day.getMonth() !== selectedDate.getMonth()
+      ? 'bg-slate-50/70'
+      : 'bg-white',
+    blackoutResourcesOn(day).length
+      ? 'ring-1 ring-inset ring-red-300 bg-red-50/70'
+      : ''
+  ]"
                 >
                   <button
                     @click="selectDay(day)"
                     class="mb-2 flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold"
                     :class="sameDay(day, new Date()) ? 'bg-indigo-600 text-white' : day.getMonth() !== selectedDate.getMonth() ? 'text-slate-300 hover:bg-slate-200' : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700'"
                   >{{ day.getDate() }}</button>
+                  <span
+  v-if="blackoutResourcesOn(day).length"
+  class="mb-1 block rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700"
+>
+  Blackout
+</span>
                   <button
                     v-for="booking in bookingsOn(day).slice(0, 3)"
                     :key="booking.id"
