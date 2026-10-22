@@ -29,6 +29,7 @@ const resourcesError = ref('')
 
 const userTimezone = ref('UTC')
 const bookings = ref([])
+const resourceSchedules = ref({})
 const scheduleLoading = ref(false)
 const scheduleError = ref('')
 
@@ -83,28 +84,36 @@ async function loadSchedule() {
       }),
     )
 
-    bookings.value = results.flatMap(({ resource, schedule }) => {
-      const schedules = schedule.schedules ?? []
+    
+resourceSchedules.value = Object.fromEntries(
+  results.map(({ resource, schedule }) => [
+    resource.name,
+    schedule.schedules ?? [],
+  ])
+)
 
+bookings.value = results.flatMap(({ resource, schedule }) => {
+  const schedules = schedule.schedules ?? []
 
-      return schedules.flatMap((daySchedule) =>
-        (daySchedule.bookings ?? []).map((booking) => ({
-          id: booking.booking_id ?? booking.name,
-          title: booking.customer || 'Booked',
-          resource: resource.name,
-          resourceLabel:resource.resource_name || resource.name,
-          date: daySchedule.date,
-          start: booking.start_time_user_datetime
-            ? new Date(booking.start_time_user_datetime)
-            : new Date(`${daySchedule.date}T${booking.start_time}`),
-          end: booking.end_time_user_datetime
-            ? new Date(booking.end_time_user_datetime)
-            : new Date(`${daySchedule.date}T${booking.end_time}`),
-          status: booking.status || 'Booked',
-          color: 'blue',
-        })),
-      )
-    })
+  return schedules.flatMap(daySchedule =>
+    (daySchedule.bookings ?? []).map(booking => ({
+      id: booking.booking_id ?? booking.name,
+      title: booking.customer || 'Booked',
+      resource: resource.name,
+      resourceLabel: resource.resource_name || resource.name,
+      date: daySchedule.date,
+      start: booking.start_time_user_datetime
+        ? new Date(booking.start_time_user_datetime)
+        : new Date(`${daySchedule.date}T${booking.start_time}`),
+      end: booking.end_time_user_datetime
+        ? new Date(booking.end_time_user_datetime)
+        : new Date(`${daySchedule.date}T${booking.end_time}`),
+      status: booking.status || 'Booked',
+      color: 'blue',
+    }))
+  )
+})
+
   } catch (error) {
     console.error('Failed to load schedule:', error)
     scheduleError.value = error.message
@@ -362,6 +371,36 @@ function timelineBookingStyle(booking) {
     height: '72px',
   }
 }
+
+
+function timelineAvailabilityStyle(slot, selectedDay) {
+  if (!slot.start_time_user_datetime || !slot.end_time_user_datetime) {
+    return null
+  }
+
+  const start = new Date(slot.start_time_user_datetime)
+  const end = new Date(slot.end_time_user_datetime)
+
+  const dayStart = new Date(selectedDay)
+  dayStart.setHours(0, 0, 0, 0)
+
+  const dayEnd = new Date(dayStart)
+  dayEnd.setDate(dayEnd.getDate() + 1)
+
+  const visibleStart = Math.max(start.getTime(), dayStart.getTime())
+  const visibleEnd = Math.min(end.getTime(), dayEnd.getTime())
+
+  if (visibleEnd <= visibleStart) return null
+
+  const startMinutes = (visibleStart - dayStart.getTime()) / 60000
+  const endMinutes = (visibleEnd - dayStart.getTime()) / 60000
+
+  return {
+    left: `${startMinutes / 60 * TIMELINE_HOUR_WIDTH}px`,
+    width: `${(endMinutes - startMinutes) / 60 * TIMELINE_HOUR_WIDTH}px`,
+  }
+}
+
 
 
 
@@ -651,6 +690,29 @@ function selectSlot(resource, date, hour) {
 
       <!-- 24-hour timeline track -->
       <div class="relative min-h-24 w-[2400px]">
+      
+<div
+  v-if="(resourceSchedules[resource.name] || [])
+    .some(daySchedule =>
+      daySchedule.date === dateKey(selectedDate) &&
+      daySchedule.is_blackout
+    )"
+  class="absolute inset-0 z-10 bg-red-500/10 pointer-events-none"
+></div>
+
+      
+
+      
+<div
+  v-for="slot in (resourceSchedules[resource.name] || [])
+    .filter(daySchedule => daySchedule.date === dateKey(selectedDate))
+    .flatMap(daySchedule => daySchedule.slots || [])
+    .filter(slot => slot.status === 'available')"
+  :key="`${resource.name}-${slot.start_time_user_datetime}`"
+  class="absolute top-0 h-full bg-green-400/10 pointer-events-none"
+  :style="timelineAvailabilityStyle(slot, selectedDate)"
+></div>
+
         <!-- Hour grid and clickable empty slots -->
         <div class="absolute inset-0 grid grid-cols-[repeat(24,100px)]">
           <button
