@@ -47,3 +47,10 @@ def get_resources():
         order_by="resource_name asc",
         page_length=500,
     )
+
+@frappe.whitelist()
+def get_csrf_token():
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in.")
+
+    return frappe.session.data.csrf_token

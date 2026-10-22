@@ -604,7 +604,7 @@ function selectSlot(resource, date, hour) {
           <div class="text-xs text-slate-400">Workspace <span class="mx-1">/</span> <span class="text-slate-600">{{ activeView }}</span></div>
           <h1 class="mt-1 text-xl font-bold tracking-tight text-slate-900">{{ activeView }}</h1>
         </div>
-        <button @click="createBooking" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700">
+        <button @click="openNewBooking" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700">
           <span class="text-lg leading-none">+</span> New Booking
         </button>
       </header>
@@ -630,7 +630,7 @@ function selectSlot(resource, date, hour) {
 
   <button
     v-if="selectedBookingSlot"
-    @click="openNewBooking"
+    @click="createBooking"
     :disabled="bookingSubmitting"
     class="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
   >
