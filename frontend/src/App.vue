@@ -21,10 +21,13 @@ import {
   createBlackoutDate,
   getCurrentUserRoles,
   validateGroupBooking,
+  cancelBooking,
 } from './api'
 
 const activeView = ref('Resource Desk')
 const canManageResources = ref(false)
+const currentUserRoles = ref([])
+const currentUser = ref('')
 const calendarView = ref('Week')
 const selectedDate = ref(new Date())
 const resourceFilter = ref('All resources')
@@ -482,6 +485,7 @@ watch([selectedDate, calendarView], () => {
 onMounted(async () => {
   try {
     const roles = await getCurrentUserRoles()
+    currentUserRoles.value = roles
     // Booking User is read-only unless the user also has a manager/admin role.
     canManageResources.value =
       !roles.includes('Booking User') ||
@@ -811,8 +815,48 @@ async function saveBookingChanges() {
 }
 
 
+const bookingCancelling = ref(false)
+const bookingCancelError = ref('')
+const bookingCancelSuccess = ref('')
+
+const canCancelSelectedBooking = computed(() => {
+  const booking = selectedBooking.value
+  if (!booking || !booking.docName && !booking.name) return false
+  if (!['Pending', 'Confirmed'].includes(booking.status)) return false
+  const roles = currentUserRoles.value
+  return booking.customer_user === currentUser.value
+    || roles.includes('Booking Manager')
+    || roles.includes('System Manager')
+    || currentUser.value === 'Administrator'
+})
+
+async function cancelSelectedBooking() {
+  if (!selectedBooking.value) return
+  if (!window.confirm('Cancel this booking? The booking will remain in the system with Cancelled status.')) return
+  bookingCancelError.value = ''
+  bookingCancelSuccess.value = ''
+  bookingCancelling.value = true
+  try {
+    const name = selectedBooking.value.docName || selectedBooking.value.name
+    await cancelBooking(name)
+    bookingCancelSuccess.value = 'Booking cancelled.'
+    selectedBooking.value = {
+      ...selectedBooking.value,
+      status: 'Cancelled',
+    }
+    await loadSchedule()
+    await loadBookingsPage()
+  } catch (error) {
+    bookingCancelError.value = error.message || 'Could not cancel booking.'
+  } finally {
+    bookingCancelling.value = false
+  }
+}
+
 async function openBooking(booking) {
   selectedBooking.value = booking
+  bookingCancelError.value = ''
+  bookingCancelSuccess.value = ''
   bookingDetailsError.value = ''
   bookingDetailsLoading.value = true
 
@@ -1258,6 +1302,8 @@ function selectSlot(resource, date, hour) {
 </button>
       </div>
 
+      <p v-if="bookingCancelError" class="mb-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{{ bookingCancelError }}</p>
+      <p v-if="bookingCancelSuccess" class="mb-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{{ bookingCancelSuccess }}</p>
       <div class="space-y-4 text-sm">
         <div class="rounded-lg bg-slate-50 p-3">
           <p class="text-xs text-slate-500">Booking ID</p>
@@ -1347,6 +1393,15 @@ function selectSlot(resource, date, hour) {
     Close
   </button>
 
+  <button
+    v-if="canCancelSelectedBooking && !bookingEditMode"
+    type="button"
+    @click="cancelSelectedBooking"
+    :disabled="bookingCancelling"
+    class="rounded-lg border border-rose-200 bg-rose-50 px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+  >
+    {{ bookingCancelling ? 'Cancelling…' : 'Cancel booking' }}
+  </button>
   <button
     v-if="bookingEditMode"
     type="button"
