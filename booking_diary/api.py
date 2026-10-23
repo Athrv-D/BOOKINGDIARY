@@ -54,3 +54,10 @@ def get_csrf_token():
         frappe.throw("Please log in.")
 
     return frappe.session.data.csrf_token
+
+@frappe.whitelist()
+def get_current_user_roles():
+    """Return roles for the currently authenticated user."""
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in.")
+    return frappe.get_roles(frappe.session.user)
