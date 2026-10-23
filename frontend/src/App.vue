@@ -861,14 +861,23 @@ async function cancelSelectedBooking() {
 }
 
 async function openBooking(booking) {
-  selectedBooking.value = booking
+  const documentName = booking?.docName || booking?.name
+  if (!documentName || documentName === 'null' || documentName === 'undefined') {
+    bookingDetailsError.value = 'Booking details are not available for this booking.'
+    return
+  }
+
+  selectedBooking.value = {
+    ...booking,
+    docName: documentName,
+  }
   bookingCancelError.value = ''
   bookingCancelSuccess.value = ''
   bookingDetailsError.value = ''
   bookingDetailsLoading.value = true
 
   try {
-    const record = await getBooking(booking.docName)
+    const record = await getBooking(documentName)
 
     selectedBooking.value = {
       ...booking,
@@ -2174,7 +2183,7 @@ function selectSlot(resource, date, hour) {
             b => b.status !== 'Cancelled'
           )"
           :key="booking.id"
-          @click.stop="openBooking(booking)"
+          @click.stop="booking.docName ? openBooking(booking) : null"
           class="absolute z-[1] overflow-hidden rounded-md border-l-[3px] px-2 py-2 text-left text-xs shadow-sm transition hover:shadow-md"
           :class="booking.status === 'Pending'
             ? 'border-amber-400 bg-amber-50 text-amber-900'
