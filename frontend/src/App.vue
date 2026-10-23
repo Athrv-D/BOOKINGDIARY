@@ -935,18 +935,21 @@ const bookingForm = ref({
   remarks: '',
 })
 
-function openNewBooking() {
+function openNewBooking(resource = null) {
   bookingError.value = ''
   bookingSuccess.value = ''
 
   const slot = selectedBookingSlot.value
+  const resourceName = typeof resource === 'string' ? resource : resource?.name
 
   bookingForm.value = {
     resources: slot?.resource
       ? [slot.resource]
-      : resources.value[0]?.name
-        ? [resources.value[0].name]
-        : [],
+      : resourceName
+        ? [resourceName]
+        : resources.value[0]?.name
+          ? [resources.value[0].name]
+          : [],
     bookingDate: slot?.bookingDate || dateKey(selectedDate.value),
     startTime: slot?.startTime || '09:00:00',
     endTime: slot?.endTime || '10:00:00',
@@ -2179,6 +2182,7 @@ function selectSlot(resource, date, hour) {
             <th class="px-3 py-3 font-medium">Type</th>
             <th class="px-3 py-3 font-medium">Availability</th>
             <th class="px-3 py-3 font-medium">Time Zone</th>
+            <th class="px-3 py-3 font-medium">Quick Check</th>
             <th v-if="canManageResources" class="px-3 py-3 font-medium">Action</th>
           </tr>
         </thead>
@@ -2196,6 +2200,14 @@ function selectSlot(resource, date, hour) {
               {{ resource.available ? 'Available' : 'Unavailable' }}
             </td>
             <td class="px-3 py-3">{{ resource.time_zone || '—' }}</td>
+            <td class="px-3 py-3">
+              <button
+                type="button"
+                @click="openNewBooking(resource)"
+                :disabled="resource.available === 0 || resource.available === false"
+                class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >Check slots</button>
+            </td>
             
             <td v-if="canManageResources" class="px-3 py-3">
               <div class="flex flex-wrap items-center gap-2">
