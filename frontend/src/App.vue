@@ -20,6 +20,7 @@ import {
   getAvailability,
   createBlackoutDate,
   getCurrentUserRoles,
+  getCurrentUser,
   validateGroupBooking,
   cancelBooking,
 } from './api'
@@ -486,6 +487,7 @@ onMounted(async () => {
   try {
     const roles = await getCurrentUserRoles()
     currentUserRoles.value = roles
+    currentUser.value = await getCurrentUser()
     // Booking User is read-only unless the user also has a manager/admin role.
     canManageResources.value =
       !roles.includes('Booking User') ||
