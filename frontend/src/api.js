@@ -344,3 +344,8 @@ export async function cancelBooking(bookingName) {
     booking_name: bookingName,
   })
 }
+
+
+export async function getCurrentUser() {
+  return frappeGet('booking_diary.api.get_current_user')
+}
