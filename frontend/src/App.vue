@@ -797,6 +797,7 @@ function selectSlot(resource, date, hour) {
   <button
     v-if="bookingEditMode"
     type="button"
+    @click="saveBookingChanges"
     :disabled="bookingUpdating"
     class="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
   >
