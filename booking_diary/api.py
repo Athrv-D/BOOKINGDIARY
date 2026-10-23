@@ -163,3 +163,83 @@ def create_group_booking(
         "bookings": created,
         "count": len(created),
     }
+
+
+
+@frappe.whitelist()
+def validate_group_booking(
+    resources,
+    booking_date,
+    start_time,
+    end_time,
+    booking_type="Single Slot",
+    repeat_until=None,
+):
+    """Validate a proposed group booking without inserting any booking rows."""
+    import json
+
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in to validate a booking.")
+
+    roles = set(frappe.get_roles(frappe.session.user))
+    if not (
+        frappe.session.user == "Administrator"
+        or "System Manager" in roles
+        or "Booking Manager" in roles
+        or "Booking User" in roles
+    ):
+        frappe.throw("You do not have permission to create bookings.")
+
+    if isinstance(resources, str):
+        try:
+            resources = json.loads(resources)
+        except (TypeError, ValueError):
+            frappe.throw("Select one or more valid resources.")
+
+    if not isinstance(resources, list):
+        frappe.throw("Select one or more resources.")
+
+    resources = sorted(set(
+        str(resource).strip() for resource in resources if str(resource).strip()
+    ))
+    if not resources:
+        return {"valid": False, "errors": ["Select at least one resource."]}
+
+    if len(resources) > 20:
+        return {"valid": False, "errors": ["A group booking can include at most 20 resources."]}
+
+    results = []
+    for resource in resources:
+        try:
+            if not frappe.db.exists("Resource", resource):
+                frappe.throw(f"Resource not found: {resource}")
+
+            if not frappe.db.get_value("Resource", resource, "available"):
+                frappe.throw(f"{resource} is marked unavailable.")
+
+            candidate = frappe.get_doc({
+                "doctype": "Booking Diary",
+                "booking_id": "VALIDATE-" + frappe.generate_hash(length=8).upper(),
+                "group_booking_id": "VALIDATION-ONLY",
+                "resource": resource,
+                "booking_date": booking_date,
+                "start_time": start_time,
+                "end_time": end_time,
+                "status": "Pending",
+                "booking_type": booking_type,
+                "repeat_until": repeat_until if booking_type == "Recurring" else None,
+                "customer": "",
+                "remarks": "",
+            })
+            candidate.validate()
+            results.append({"resource": resource, "valid": True, "error": ""})
+        except Exception as exc:
+            message = str(exc).strip() or f"{resource} failed validation."
+            # Remove HTML wrappers commonly added by Frappe exceptions.
+            import re
+            message = re.sub(r"<[^>]+>", " ", message)
+            message = re.sub(r"\s+", " ", message).strip()
+            results.append({"resource": resource, "valid": False, "error": message})
+
+    errors = [item["error"] for item in results if not item["valid"]]
+    return {"valid": not errors, "errors": errors, "resources": results}
