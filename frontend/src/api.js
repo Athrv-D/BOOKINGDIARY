@@ -155,27 +155,34 @@ export async function getUserDaySchedule(
 }
 
 
-export async function createBooking({resource,bookingDate,startTime,endTime,bookingType ='Single Slot',repeatUntil =null,customer='',remarks='',}) {
-  const doc = {
-    doctype:'Booking Diary',
-    booking_id:`BK-${String(Date.now()).slice(-6)}`,
-    resource,
-    booking_date:bookingDate,
-    start_time:startTime,
-    end_time:endTime,
-    status:"Pending",
-    booking_type:bookingType,
-    customer:customer || '',
-    remarks:remarks || '',
-  }
-  if(bookingType === 'Recurring'){
-    doc.repeat_until = repeatUntil
-  }
+export async function createBooking({
+  resource,
+  resources = null,
+  bookingDate,
+  startTime,
+  endTime,
+  bookingType = 'Single Slot',
+  repeatUntil = null,
+  customer = '',
+  remarks = '',
+}) {
+  const selectedResources = Array.isArray(resources) && resources.length
+    ? resources
+    : resource
+      ? [resource]
+      : []
 
-  return frappePost('frappe.client.insert',{doc})
-  
+  return frappePost('booking_diary.api.create_group_booking', {
+    resources: selectedResources,
+    booking_date: bookingDate,
+    start_time: startTime,
+    end_time: endTime,
+    booking_type: bookingType,
+    repeat_until: bookingType === 'Recurring' ? repeatUntil : null,
+    customer,
+    remarks,
+  })
 }
-
 
 export async function getBooking(name) {
   return frappeGet('frappe.client.get', {
