@@ -428,6 +428,30 @@ const bookingUpdating = ref(false)
 const bookingDetailsLoading = ref(false)
 const bookingDetailsError = ref('')
 
+
+async function saveBookingChanges() {
+  bookingUpdateError.value = ''
+  bookingUpdating.value = true
+
+  try {
+    const updatedRecord = await updateBooking(selectedBooking.value)
+
+    selectedBooking.value = {
+      ...selectedBooking.value,
+      ...updatedRecord,
+    }
+
+    bookingEditMode.value = false
+    await loadSchedule()
+  } catch (error) {
+    bookingUpdateError.value =
+      error.message || 'Could not save booking changes.'
+  } finally {
+    bookingUpdating.value = false
+  }
+}
+
+
 async function openBooking(booking) {
   selectedBooking.value = booking
   bookingDetailsError.value = ''
@@ -750,15 +774,36 @@ function selectSlot(resource, date, hour) {
         </div>
       </div>
 
-      <div class="mt-7 flex justify-end">
-        <button
-          type="button"
-          @click="selectedBooking = null"
-          class="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
-        >
-          Close
-        </button>
-      </div>
+ 
+<div class="mt-7 flex justify-end gap-3">
+  <button
+    v-if="bookingEditMode"
+    type="button"
+    @click="bookingEditMode = false"
+    class="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+  >
+    Cancel
+  </button>
+
+  <button
+    v-else
+    type="button"
+    @click="selectedBooking = null"
+    class="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+  >
+    Close
+  </button>
+
+  <button
+    v-if="bookingEditMode"
+    type="button"
+    :disabled="bookingUpdating"
+    class="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+  >
+    {{ bookingUpdating ? 'Saving...' : 'Save Changes' }}
+  </button>
+</div>
+
     </div>
   </div>
 </Teleport>
