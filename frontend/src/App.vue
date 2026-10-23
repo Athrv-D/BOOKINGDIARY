@@ -9,6 +9,9 @@ import {
   getBooking,
   updateBooking,
   createBooking as submitBooking,
+  getResource,
+  createResource,
+  updateResource,
 } from './api'
 
 const activeView = ref('Resource Desk')
@@ -28,6 +31,22 @@ const navigation = [
 const resources = ref([])
 const resourcesLoading = ref(false)
 const resourcesError = ref('')
+
+
+const resourceFormOpen = ref(false)
+const resourceEditMode = ref(false)
+const resourceSaving = ref(false)
+const resourceFormError = ref('')
+
+const resourceForm = ref({
+  name: '',
+  resource_name: '',
+  resource_type: '',
+  description: '',
+  available: true,
+  time_zone: 'Asia/Kolkata',
+})
+
 
 
 const userTimezone = ref('UTC')
@@ -50,6 +69,83 @@ async function loadResources() {
     resourcesLoading.value = false
   }
 }
+
+
+function openResourceCreate() {
+  resourceFormError.value = ''
+  resourceEditMode.value = false
+
+  resourceForm.value = {
+    name: '',
+    resource_name: '',
+    resource_type: '',
+    description: '',
+    available: true,
+    time_zone: 'Asia/Kolkata',
+  }
+
+  resourceFormOpen.value = true
+}
+
+async function openResourceEdit(resource) {
+  resourceFormError.value = ''
+  resourceEditMode.value = true
+
+  try {
+    const doc = await getResource(resource.name)
+
+    resourceForm.value = {
+      ...doc,
+      available: Boolean(doc.available),
+    }
+
+    resourceFormOpen.value = true
+  } catch (error) {
+    resourceFormError.value =
+      error.message || 'Could not load resource details.'
+  }
+}
+
+async function saveResource() {
+  resourceFormError.value = ''
+
+  const form = resourceForm.value
+
+  if (!form.resource_name.trim() || !form.resource_type.trim() || !form.time_zone.trim()) {
+    resourceFormError.value =
+      'Resource name, resource type, and time zone are required.'
+    return
+  }
+
+  resourceSaving.value = true
+
+  try {
+    if (resourceEditMode.value) {
+      await updateResource({
+        ...form,
+        available: form.available ? 1 : 0,
+      })
+    } else {
+      await createResource({
+        resourceName: form.resource_name,
+        resourceType: form.resource_type,
+        description: form.description,
+        available: form.available,
+        timeZone: form.time_zone,
+      })
+    }
+
+    resourceFormOpen.value = false
+    await loadResources()
+    await loadSchedule()
+  } catch (error) {
+    resourceFormError.value =
+      error.message || 'Could not save resource.'
+  } finally {
+    resourceSaving.value = false
+  }
+}
+
 
 async function loadSchedule() {
   if (!resources.value.length) return
@@ -608,32 +704,46 @@ const selectedBookingSlot = ref(null)
 
 function selectSlot(resource, date, hour) {
   const bookingDate = dateKey(date)
+
+  const daySchedule = (resourceSchedules.value[resource] || []).find(
+    item => item.date === bookingDate
+  )
+
+  if (!daySchedule || daySchedule.is_blackout) {
+    return
+  }
+
   const hourStart = new Date(date)
   hourStart.setHours(hour, 0, 0, 0)
 
   const hourEnd = new Date(hourStart)
   hourEnd.setHours(hour + 1, 0, 0, 0)
 
-  const daySchedule = (resourceSchedules[resource] || []).find(
-    item => item.date === bookingDate
-  )
+  const intervals = (daySchedule.slots || [])
+    .filter(slot =>
+      slot.status === 'available' &&
+      slot.start_time_user_datetime &&
+      slot.end_time_user_datetime
+    )
+    .map(slot => ({
+      start: new Date(slot.start_time_user_datetime).getTime(),
+      end: new Date(slot.end_time_user_datetime).getTime(),
+    }))
+    .filter(slot =>
+      slot.start < hourEnd.getTime() &&
+      slot.end > hourStart.getTime()
+    )
+    .sort((a, b) => a.start - b.start)
 
-  const isAvailable = (daySchedule?.slots || []).some(slot => {
-    if (
-      slot.status !== 'available' ||
-      !slot.start_time_user_datetime ||
-      !slot.end_time_user_datetime
-    ) {
-      return false
-    }
+  let coveredUntil = hourStart.getTime()
 
-    const slotStart = new Date(slot.start_time_user_datetime)
-    const slotEnd = new Date(slot.end_time_user_datetime)
+  for (const slot of intervals) {
+    if (slot.start > coveredUntil) break
+    coveredUntil = Math.max(coveredUntil, slot.end)
+    if (coveredUntil >= hourEnd.getTime()) break
+  }
 
-    return slotStart <= hourStart && slotEnd >= hourEnd
-  })
-
-  if (!isAvailable) {
+  if (coveredUntil < hourEnd.getTime()) {
     return
   }
 
@@ -989,6 +1099,109 @@ function selectSlot(resource, date, hour) {
 </div>
 </div>
 </Teleport>
+
+<Teleport to="body">
+  <div
+    v-if="resourceFormOpen"
+    class="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/50 p-4"
+    @click.self="resourceFormOpen = false"
+  >
+    <form
+      class="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
+      role="dialog"
+      aria-modal="true"
+      @submit.prevent="saveResource"
+    >
+      <div class="mb-6 flex items-center justify-between">
+        <h2 class="text-xl font-bold text-slate-900">
+          {{ resourceEditMode ? 'Edit Resource' : 'Create Resource' }}
+        </h2>
+        <button
+          type="button"
+          @click="resourceFormOpen = false"
+          class="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+        >
+          Cancel
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <label class="text-sm font-medium text-slate-700">
+          Resource Name *
+          <input
+            v-model="resourceForm.resource_name"
+            required
+            maxlength="140"
+            class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+          />
+        </label>
+
+        <label class="text-sm font-medium text-slate-700">
+          Resource Type *
+          <input
+            v-model="resourceForm.resource_type"
+            required
+            maxlength="140"
+            class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+          />
+        </label>
+
+        <label class="text-sm font-medium text-slate-700 md:col-span-2">
+          Description
+          <textarea
+            v-model="resourceForm.description"
+            rows="3"
+            class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+          ></textarea>
+        </label>
+
+        <label class="text-sm font-medium text-slate-700 md:col-span-2">
+          Time Zone *
+          <input
+            v-model="resourceForm.time_zone"
+            required
+            placeholder="Asia/Kolkata"
+            class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+          />
+          <span class="mt-1 block text-xs text-slate-500">
+            Use an IANA timezone, such as Asia/Kolkata or America/New_York.
+          </span>
+        </label>
+
+        <label class="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
+          <input
+            v-model="resourceForm.available"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-300"
+          />
+          Resource is available for booking
+        </label>
+      </div>
+
+      <p v-if="resourceFormError" class="mt-4 text-sm text-red-600">
+        {{ resourceFormError }}
+      </p>
+
+      <div class="mt-6 flex justify-end gap-3">
+        <button
+          type="button"
+          @click="resourceFormOpen = false"
+          class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          :disabled="resourceSaving"
+          class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {{ resourceSaving ? 'Saving…' : 'Save Resource' }}
+        </button>
+      </div>
+    </form>
+  </div>
+</Teleport>
+
 <div
   v-if="selectedBooking"
   class="mx-5 mt-4 rounded-xl border border-slate-200 bg-white p-5 md:mx-8"
@@ -1301,6 +1514,78 @@ function selectSlot(resource, date, hour) {
           </div>
         </section>
       </div>
+
+<div v-else-if="activeView === 'Resources'" class="p-5 md:p-8">
+  <section class="rounded-xl border border-slate-200 bg-white p-6">
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <h2 class="text-xl font-bold text-slate-900">Resources</h2>
+        <p class="mt-1 text-sm text-slate-500">
+          Create and manage your bookable resources.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        @click="openResourceCreate"
+        class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+      >
+        + Create Resource
+      </button>
+    </div>
+
+    <p v-if="resourcesError" class="mt-4 text-sm text-red-600">
+      {{ resourcesError }}
+    </p>
+
+    <div v-if="resourcesLoading" class="py-8 text-center text-sm text-slate-500">
+      Loading resources…
+    </div>
+
+    <div v-else-if="resources.length" class="mt-6 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-b border-slate-200 text-slate-500">
+            <th class="px-3 py-3 font-medium">Resource Name</th>
+            <th class="px-3 py-3 font-medium">Type</th>
+            <th class="px-3 py-3 font-medium">Availability</th>
+            <th class="px-3 py-3 font-medium">Time Zone</th>
+            <th class="px-3 py-3 font-medium">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="resource in resources"
+            :key="resource.name"
+            class="border-b border-slate-100"
+          >
+            <td class="px-3 py-3 font-medium text-slate-900">
+              {{ resource.resource_name || resource.name }}
+            </td>
+            <td class="px-3 py-3">{{ resource.resource_type || '—' }}</td>
+            <td class="px-3 py-3">
+              {{ resource.available ? 'Available' : 'Unavailable' }}
+            </td>
+            <td class="px-3 py-3">{{ resource.time_zone || '—' }}</td>
+            <td class="px-3 py-3">
+              <button
+                type="button"
+                @click="openResourceEdit(resource)"
+                class="font-semibold text-indigo-600 hover:text-indigo-800"
+              >
+                Edit
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p v-else class="py-8 text-center text-sm text-slate-500">
+      No resources found. Create your first resource to get started.
+    </p>
+  </section>
+</div>
 
       <div v-else class="p-5 md:p-8">
         <section class="rounded-xl border border-slate-200 bg-white p-8">

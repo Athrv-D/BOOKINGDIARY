@@ -188,3 +188,34 @@ export async function getBooking(name) {
 export async function updateBooking(doc) {
   return frappePost('frappe.client.save', { doc })
 }
+
+
+export async function createResource({
+  resourceName,
+  resourceType,
+  description = '',
+  available = true,
+  timeZone = 'Asia/Kolkata',
+}) {
+  const doc = {
+    doctype: 'Resource',
+    resource_name: resourceName.trim(),
+    resource_type: resourceType.trim(),
+    description: description.trim(),
+    available: available ? 1 : 0,
+    time_zone: timeZone,
+  }
+
+  return frappePost('frappe.client.insert', { doc })
+}
+
+export async function getResource(name) {
+  return frappeGet('frappe.client.get', {
+    doctype: 'Resource',
+    name,
+  })
+}
+
+export async function updateResource(doc) {
+  return frappePost('frappe.client.save', { doc })
+}
