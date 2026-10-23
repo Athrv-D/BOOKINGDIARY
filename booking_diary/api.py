@@ -251,3 +251,37 @@ def validate_group_booking(
 
     errors = [item["error"] for item in results if not item["valid"]]
     return {"valid": not errors, "errors": errors, "resources": results}
+
+
+
+@frappe.whitelist()
+def cancel_booking(booking_name):
+    """Cancel a booking only for its owner or an authorized manager."""
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in to cancel a booking.")
+
+    roles = set(frappe.get_roles(frappe.session.user))
+    is_admin = (
+        frappe.session.user == "Administrator"
+        or "System Manager" in roles
+    )
+    is_manager = "Booking Manager" in roles
+
+    booking = frappe.get_doc("Booking Diary", booking_name)
+
+    if not (is_admin or is_manager):
+        if "Booking User" not in roles:
+            frappe.throw("You do not have permission to cancel bookings.")
+        if booking.customer_user != frappe.session.user:
+            frappe.throw("You can cancel only your own bookings.")
+
+    if booking.status not in ("Pending", "Confirmed"):
+        frappe.throw("Only pending or confirmed bookings can be cancelled.")
+
+    booking.status = "Cancelled"
+    booking.save()
+    return {
+        "name": booking.name,
+        "booking_id": booking.booking_id,
+        "status": booking.status,
+    }
