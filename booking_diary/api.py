@@ -278,12 +278,20 @@ def cancel_booking(booking_name):
     if booking.status not in ("Pending", "Confirmed"):
         frappe.throw("Only pending or confirmed bookings can be cancelled.")
 
-    booking.status = "Cancelled"
-    booking.save()
+    # Update the status directly so legacy records missing newer mandatory
+    # fields (such as booking_type) can still be cancelled safely. Ownership
+    # and role authorization have already been checked above.
+    frappe.db.set_value(
+        "Booking Diary",
+        booking.name,
+        "status",
+        "Cancelled",
+        update_modified=True,
+    )
     return {
         "name": booking.name,
         "booking_id": booking.booking_id,
-        "status": booking.status,
+        "status": "Cancelled",
     }
 
 
@@ -292,3 +300,64 @@ def get_current_user():
     if frappe.session.user == "Guest":
         frappe.throw("Please log in.")
     return frappe.session.user
+
+
+
+@frappe.whitelist()
+def complete_past_bookings():
+    """Mark elapsed pending/confirmed bookings completed in resource-local time."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in.")
+
+    rows = frappe.db.sql(
+        """
+        SELECT
+            booking.name,
+            booking.booking_type,
+            booking.booking_date,
+            booking.end_time,
+            booking.repeat_until,
+            resource.time_zone
+        FROM `tabBooking Diary` booking
+        INNER JOIN `tabResource` resource ON resource.name = booking.resource
+        WHERE booking.status IN ('Pending', 'Confirmed')
+        """,
+        as_dict=True,
+    )
+
+    completed = []
+    now_utc = frappe.utils.now_datetime()
+    for row in rows:
+        timezone_name = row.time_zone or frappe.db.get_single_value(
+            "System Settings", "time_zone"
+        ) or "UTC"
+        try:
+            timezone = ZoneInfo(timezone_name)
+        except (ZoneInfoNotFoundError, ValueError):
+            continue
+
+        if row.booking_type == "Recurring":
+            if not row.repeat_until:
+                continue
+            final_date = frappe.utils.getdate(row.repeat_until)
+        else:
+            final_date = frappe.utils.getdate(row.booking_date)
+
+        end_time = frappe.utils.get_time(row.end_time)
+        end_datetime = datetime.combine(final_date, end_time).replace(tzinfo=timezone)
+        now_local = now_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(timezone)
+
+        if end_datetime <= now_local:
+            frappe.db.set_value(
+                "Booking Diary",
+                row.name,
+                "status",
+                "Completed",
+                update_modified=True,
+            )
+            completed.append(row.name)
+
+    return {"completed_count": len(completed)}
