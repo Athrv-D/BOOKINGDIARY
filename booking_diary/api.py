@@ -278,6 +278,29 @@ def cancel_booking(booking_name):
     if booking.status not in ("Pending", "Confirmed"):
         frappe.throw("Only pending or confirmed bookings can be cancelled.")
 
+    # If the requested booking has already ended in its resource's timezone,
+    # complete it rather than allowing a cancellation of past time.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    resource_timezone = frappe.db.get_value("Resource", booking.resource, "time_zone") or "UTC"
+    try:
+        timezone = ZoneInfo(resource_timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        timezone = ZoneInfo("UTC")
+    end_date = booking.repeat_until if booking.booking_type == "Recurring" and booking.repeat_until else booking.booking_date
+    booking_end = datetime.combine(
+        frappe.utils.getdate(end_date),
+        frappe.utils.get_time(booking.end_time),
+    ).replace(tzinfo=timezone)
+    if booking_end <= datetime.now(ZoneInfo("UTC")).astimezone(timezone):
+        frappe.db.set_value("Booking Diary", booking.name, "status", "Completed", update_modified=True)
+        return {
+            "name": booking.name,
+            "booking_id": booking.booking_id,
+            "status": "Completed",
+            "message": "This booking has already ended and was marked Completed instead of cancelled.",
+        }
+
     # Update the status directly so legacy records missing newer mandatory
     # fields (such as booking_type) can still be cancelled safely. Ownership
     # and role authorization have already been checked above.
@@ -329,7 +352,7 @@ def complete_past_bookings():
     )
 
     completed = []
-    now_utc = frappe.utils.now_datetime()
+    now_utc = datetime.now(ZoneInfo("UTC"))
     for row in rows:
         timezone_name = row.time_zone or frappe.db.get_single_value(
             "System Settings", "time_zone"
@@ -348,7 +371,7 @@ def complete_past_bookings():
 
         end_time = frappe.utils.get_time(row.end_time)
         end_datetime = datetime.combine(final_date, end_time).replace(tzinfo=timezone)
-        now_local = now_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(timezone)
+        now_local = now_utc.astimezone(timezone)
 
         if end_datetime <= now_local:
             frappe.db.set_value(
