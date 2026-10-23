@@ -229,6 +229,14 @@ def validate_group_booking(
                 "booking_type": booking_type,
                 "repeat_until": repeat_until if booking_type == "Recurring" else None,
                 "customer": "",
+                "customer_user": (
+                    frappe.session.user
+                    if "Booking User" in roles
+                    and "Booking Manager" not in roles
+                    and "System Manager" not in roles
+                    and frappe.session.user != "Administrator"
+                    else None
+                ),
                 "remarks": "",
             })
             candidate.validate()
