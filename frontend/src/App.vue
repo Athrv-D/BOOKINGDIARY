@@ -840,11 +840,16 @@ async function cancelSelectedBooking() {
   bookingCancelling.value = true
   try {
     const name = selectedBooking.value.docName || selectedBooking.value.name
-    await cancelBooking(name)
-    bookingCancelSuccess.value = 'Booking cancelled.'
+    const result = await cancelBooking(name)
+    const finalStatus = result.status || 'Cancelled'
+    bookingCancelSuccess.value = result.message || (
+      finalStatus === 'Completed'
+        ? 'This booking has ended and is now marked Completed.'
+        : 'Booking cancelled.'
+    )
     selectedBooking.value = {
       ...selectedBooking.value,
-      status: 'Cancelled',
+      status: finalStatus,
     }
     await loadSchedule()
     await loadBookingsPage()
