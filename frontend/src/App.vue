@@ -855,7 +855,7 @@ async function createBooking() {
     const slot = selectedBookingSlot.value
 
     await submitBooking({
-      resource: slot.resource,
+      resources: [slot.resource],
       bookingDate: slot.bookingDate,
       startTime: slot.startTime,
       endTime: slot.endTime,
@@ -874,7 +874,7 @@ async function createBooking() {
 const bookingFormOpen = ref(false)
 
 const bookingForm = ref({
-  resource: '',
+  resources: [],
   bookingDate: dateKey(selectedDate.value),
   startTime: '09:00:00',
   endTime: '10:00:00',
@@ -891,7 +891,11 @@ function openNewBooking() {
   const slot = selectedBookingSlot.value
 
   bookingForm.value = {
-    resource: slot?.resource || resources.value[0]?.name || '',
+    resources: slot?.resource
+      ? [slot.resource]
+      : resources.value[0]?.name
+        ? [resources.value[0].name]
+        : [],
     bookingDate: slot?.bookingDate || dateKey(selectedDate.value),
     startTime: slot?.startTime || '09:00:00',
     endTime: slot?.endTime || '10:00:00',
@@ -910,8 +914,8 @@ async function submitManualBooking() {
 
   const form = bookingForm.value
 
-  if (!form.resource || !form.bookingDate || !form.startTime || !form.endTime) {
-    bookingError.value = 'Please fill in all required fields.'
+  if (!form.resources.length || !form.bookingDate || !form.startTime || !form.endTime) {
+    bookingError.value = 'Select at least one resource and fill in all required fields.'
     return
   }
 
@@ -931,8 +935,8 @@ async function submitManualBooking() {
   bookingSubmitting.value = true
 
   try {
-    await submitBooking({
-      resource: form.resource,
+    const result = await submitBooking({
+      resources: form.resources,
       bookingDate: form.bookingDate,
       startTime: form.startTime.length === 5
         ? `${form.startTime}:00`
@@ -948,7 +952,9 @@ async function submitManualBooking() {
       remarks: form.remarks.trim(),
     })
 
-    bookingSuccess.value = 'Booking created successfully.'
+    bookingSuccess.value = form.resources.length > 1
+      ? `Group booking created successfully (${result.count} resources). Reference: ${result.group_booking_id}`
+      : 'Booking created successfully.'
     bookingFormOpen.value = false
     selectedBookingSlot.value = null
     await loadSchedule()
@@ -1249,23 +1255,42 @@ function selectSlot(resource, date, hour) {
   </div>
 
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-    <label class="block text-sm font-medium text-slate-700">
-      Resource *
-      <select
-        v-model="bookingForm.resource"
-        required
-        class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-      >
-        <option value="" disabled>Select resource</option>
-        <option
+    <fieldset class="rounded-xl border border-slate-200 p-3 md:col-span-2">
+      <legend class="px-1 text-sm font-semibold text-slate-700">
+        Resources to book *
+      </legend>
+      <p class="mb-3 text-xs text-slate-500">
+        Select one or more resources. All will be booked for the same date and time.
+      </p>
+      <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <label
           v-for="resource in resources"
           :key="resource.name"
-          :value="resource.name"
+          class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5 text-sm hover:bg-slate-50"
+          :class="bookingForm.resources.includes(resource.name) ? 'border-indigo-300 bg-indigo-50' : 'bg-white'"
         >
-          {{ resource.resource_name || resource.name }}
-        </option>
-      </select>
-    </label>
+          <input
+            v-model="bookingForm.resources"
+            type="checkbox"
+            :value="resource.name"
+            :disabled="resource.available === 0 || resource.available === false"
+            class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+          />
+          <span class="min-w-0 flex-1">
+            <span class="block font-medium text-slate-800">
+              {{ resource.resource_name || resource.name }}
+            </span>
+            <span class="block text-xs text-slate-500">
+              {{ resource.resource_type || 'Resource' }}
+              <span v-if="resource.available === 0 || resource.available === false"> · Unavailable</span>
+            </span>
+          </span>
+        </label>
+      </div>
+      <p class="mt-3 text-xs font-medium text-slate-600">
+        Selected: {{ bookingForm.resources.length }} resource(s)
+      </p>
+    </fieldset>
 
     <label class="block text-sm font-medium text-slate-700">
       Booking date *
