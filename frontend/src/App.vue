@@ -7,6 +7,7 @@ import {
   getMultiDaySchedule,
   getUserDaySchedule,
   getBooking,
+  getBookings,
   updateBooking,
   createBooking as submitBooking,
   getResource,
@@ -15,6 +16,8 @@ import {
   createAvailability,
   updateAvailability,
   deleteAvailability,
+  getResourceAvailabilities,
+  getAvailability,
 } from './api'
 
 const activeView = ref('Resource Desk')
@@ -87,6 +90,14 @@ const availabilityForm = ref({
 
 const userTimezone = ref('UTC')
 const bookings = ref([])
+
+
+const bookingsPageLoading = ref(false)
+const bookingsPageError = ref('')
+const bookingsPageRecords = ref([])
+const bookingsPageSearch = ref('')
+const bookingsPageStatus = ref('All statuses')
+
 const resourceSchedules = ref({})
 const scheduleLoading = ref(false)
 const scheduleError = ref('')
@@ -105,6 +116,22 @@ async function loadResources() {
     resourcesLoading.value = false
   }
 }
+
+
+async function loadBookingsPage() {
+  bookingsPageLoading.value = true
+  bookingsPageError.value = ''
+
+  try {
+    bookingsPageRecords.value = await getBookings()
+  } catch (error) {
+    bookingsPageError.value =
+      error.message || 'Could not load bookings.'
+  } finally {
+    bookingsPageLoading.value = false
+  }
+}
+
 
 
 function openResourceCreate() {
@@ -1516,7 +1543,7 @@ function selectSlot(resource, date, hour) {
           </div>
           <div class="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
             <span class="h-2 w-2 rounded-full bg-amber-500"></span>
-            Live data.
+            BOOK NOW
           </div>
         </div>
 
@@ -1848,21 +1875,24 @@ function selectSlot(resource, date, hour) {
               {{ resource.available ? 'Available' : 'Unavailable' }}
             </td>
             <td class="px-3 py-3">{{ resource.time_zone || '—' }}</td>
+            
             <td class="px-3 py-3">
+              <div class="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 @click="openResourceEdit(resource)"
-                class="font-semibold text-indigo-600 hover:text-indigo-800"
+                class="inline-flex items-center rounded-lg border border-indigo-200 bg-indigo50 px-3 py-1.5 text-sm font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-100"
               >
                 Edit
               </button>
                 <button
       type="button"
       @click="openResourceAvailability(resource)"
-      class="font-semibold text-emerald-700 hover:text-emerald-800"
+      class="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
     >
       Availability
     </button>
+  </div>
             </td>
           </tr>
         </tbody>

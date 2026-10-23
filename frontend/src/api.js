@@ -263,3 +263,24 @@ export async function deleteAvailability(name) {
     name,
   })
 }
+
+
+
+export async function getBookings() {
+  return frappeGet('frappe.client.get_list', {
+    doctype: 'Booking Diary',
+    fields: JSON.stringify([
+      'name',
+      'booking_id',
+      'resource',
+      'booking_date',
+      'start_time',
+      'end_time',
+      'customer',
+      'status',
+      'remarks',
+    ]),
+    order_by: 'booking_date desc',
+    limit_page_length: 500,
+  })
+}
