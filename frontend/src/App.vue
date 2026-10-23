@@ -605,10 +605,41 @@ async function submitManualBooking() {
 const selectedBookingSlot = ref(null)
 
 
+
 function selectSlot(resource, date, hour) {
+  const bookingDate = dateKey(date)
+  const hourStart = new Date(date)
+  hourStart.setHours(hour, 0, 0, 0)
+
+  const hourEnd = new Date(hourStart)
+  hourEnd.setHours(hour + 1, 0, 0, 0)
+
+  const daySchedule = (resourceSchedules[resource] || []).find(
+    item => item.date === bookingDate
+  )
+
+  const isAvailable = (daySchedule?.slots || []).some(slot => {
+    if (
+      slot.status !== 'available' ||
+      !slot.start_time_user_datetime ||
+      !slot.end_time_user_datetime
+    ) {
+      return false
+    }
+
+    const slotStart = new Date(slot.start_time_user_datetime)
+    const slotEnd = new Date(slot.end_time_user_datetime)
+
+    return slotStart <= hourStart && slotEnd >= hourEnd
+  })
+
+  if (!isAvailable) {
+    return
+  }
+
   selectedBookingSlot.value = {
     resource,
-    bookingDate: dateKey(date),
+    bookingDate,
     startTime: `${String(hour).padStart(2, '0')}:00:00`,
     endTime: `${String(hour + 1).padStart(2, '0')}:00:00`,
   }
