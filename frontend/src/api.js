@@ -337,3 +337,10 @@ export async function createBlackoutDate({ resource = '', blackoutDate, reason =
 export async function getCurrentUserRoles() {
   return frappeGet('booking_diary.api.get_current_user_roles')
 }
+
+
+export async function cancelBooking(bookingName) {
+  return frappePost('booking_diary.api.cancel_booking', {
+    booking_name: bookingName,
+  })
+}
