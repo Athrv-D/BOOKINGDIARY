@@ -732,12 +732,21 @@ function selectSlot(resource, date, hour) {
   </p>
 </div>
 
+
 <div class="col-span-2">
   <p class="text-slate-500">Remarks</p>
-  <p class="mt-1 whitespace-pre-wrap font-medium text-slate-900">
+  <textarea
+    v-if="bookingEditMode"
+    v-model="selectedBooking.remarks"
+    rows="3"
+    class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm text-slate-900"
+    placeholder="Add remarks"
+  ></textarea>
+  <p v-else class="mt-1 whitespace-pre-wrap font-medium text-slate-900">
     {{ selectedBooking.remarks || '—' }}
   </p>
 </div>
+
         </div>
       </div>
 
