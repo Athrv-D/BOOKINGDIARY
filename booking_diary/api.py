@@ -100,7 +100,7 @@ def create_group_booking(
     if not isinstance(resources, list):
         frappe.throw("Select one or more resources.")
 
-    resources = list(dict.fromkeys(
+    resources = sorted(set(
         str(resource).strip() for resource in resources if str(resource).strip()
     ))
     if not resources:
