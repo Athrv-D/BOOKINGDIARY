@@ -19,9 +19,11 @@ import {
   getResourceAvailabilities,
   getAvailability,
   createBlackoutDate,
+  getCurrentUserRoles,
 } from './api'
 
 const activeView = ref('Resource Desk')
+const canManageResources = ref(false)
 const calendarView = ref('Week')
 const selectedDate = ref(new Date())
 const resourceFilter = ref('All resources')
@@ -477,6 +479,19 @@ watch([selectedDate, calendarView], () => {
 })
 
 onMounted(async () => {
+  try {
+    const roles = await getCurrentUserRoles()
+    // Booking User is read-only unless the user also has a manager/admin role.
+    canManageResources.value =
+      !roles.includes('Booking User') ||
+      roles.includes('Booking Manager') ||
+      roles.includes('System Manager')
+  } catch (error) {
+    // Fail closed: keep configuration controls hidden if roles cannot be verified.
+    console.error('Failed to load user roles:', error)
+    canManageResources.value = false
+  }
+
   try {
     userTimezone.value = await getUserTimezone()
   } catch (error) {
@@ -1618,7 +1633,7 @@ function selectSlot(resource, date, hour) {
                 <button @click="navigate(1)" aria-label="Next period" class="px-3 py-2 text-lg text-slate-600 hover:bg-slate-50">›</button>
               </div>
               <h3 class="min-w-40 text-sm font-bold text-slate-800">{{ viewTitle }}</h3>
-              <button type="button" @click="openBlackoutForm" class="ml-auto inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100">
+              <button v-if="canManageResources" type="button" @click="openBlackoutForm" class="ml-auto inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100">
                 <span aria-hidden="true">⛔</span> Manage blackout
               </button>
             </div>
@@ -1884,11 +1899,12 @@ function selectSlot(resource, date, hour) {
       <div>
         <h2 class="text-xl font-bold text-slate-900">Resources</h2>
         <p class="mt-1 text-sm text-slate-500">
-          Create and manage your bookable resources.
+          {{ canManageResources ? 'Create and manage your bookable resources.' : 'View available resources and their schedules.' }}
         </p>
       </div>
 
       <button
+        v-if="canManageResources"
         type="button"
         @click="openResourceCreate"
         class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
@@ -1913,7 +1929,7 @@ function selectSlot(resource, date, hour) {
             <th class="px-3 py-3 font-medium">Type</th>
             <th class="px-3 py-3 font-medium">Availability</th>
             <th class="px-3 py-3 font-medium">Time Zone</th>
-            <th class="px-3 py-3 font-medium">Action</th>
+            <th v-if="canManageResources" class="px-3 py-3 font-medium">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -1931,7 +1947,7 @@ function selectSlot(resource, date, hour) {
             </td>
             <td class="px-3 py-3">{{ resource.time_zone || '—' }}</td>
             
-            <td class="px-3 py-3">
+            <td v-if="canManageResources" class="px-3 py-3">
               <div class="flex flex-wrap items-center gap-2">
               <button
                 type="button"
