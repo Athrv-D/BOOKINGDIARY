@@ -418,10 +418,10 @@ function timelineAvailabilityStyle(slot, selectedDay) {
 
 
 
+const selectedBooking = ref(null)
+
 function openBooking(booking) {
-  window.alert(
-    `${booking.title}\n${booking.resource}\n${booking.date}\n${timeLabel(booking.start)} – ${timeLabel(booking.end)}\n\nDemo booking only. Booking details will connect to Frappe in the next step.`,
-  )
+  selectedBooking.value = booking
 }
 
 
@@ -630,11 +630,11 @@ function selectSlot(resource, date, hour) {
 
   <button
     v-if="selectedBookingSlot"
-    @click="createBooking"
+    @click="openNewBooking"
     :disabled="bookingSubmitting"
     class="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
   >
-    {{ bookingSubmitting ? 'Creating booking…' : 'Confirm booking' }}
+    {{ bookingSubmitting ? 'Creating booking…' : 'Fill Booking' }}
   </button>
 </div>
 <div
@@ -768,6 +768,30 @@ function selectSlot(resource, date, hour) {
     >
       {{ bookingSubmitting ? 'Submitting…' : 'Submit booking' }}
     </button>
+  </div>
+</div>
+<div
+  v-if="selectedBooking"
+  class="mx-5 mt-4 rounded-xl border border-slate-200 bg-white p-5 md:mx-8"
+>
+  <div class="mb-4 flex items-center justify-between">
+    <h2 class="text-lg font-bold text-slate-900">Booking Details</h2>
+    <button
+      type="button"
+      @click="selectedBooking = null"
+      class="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+    >
+      Close
+    </button>
+  </div>
+
+  <div class="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
+    <p><span class="font-semibold">Booking ID:</span> {{ selectedBooking.id }}</p>
+    <p><span class="font-semibold">Resource:</span> {{ selectedBooking.resourceLabel || selectedBooking.resource }}</p>
+    <p><span class="font-semibold">Date:</span> {{ selectedBooking.date }}</p>
+    <p><span class="font-semibold">Time:</span> {{ timeLabel(selectedBooking.start) }} – {{ timeLabel(selectedBooking.end) }}</p>
+    <p><span class="font-semibold">Customer:</span> {{ selectedBooking.title }}</p>
+    <p><span class="font-semibold">Status:</span> {{ selectedBooking.status }}</p>
   </div>
 </div>
 
