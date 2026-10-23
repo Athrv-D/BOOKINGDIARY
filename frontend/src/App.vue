@@ -974,7 +974,8 @@ function selectSlot(resource, date, hour) {
         <button
           v-for="item in navigation"
           :key="item.name"
-          @click="activeView = item.name"
+          @click="activeView = item.name
+          if (item.name === 'Bookings') loadBookingsPage()"
           class="flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition"
           :class="activeView === item.name ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'"
         >
@@ -1905,14 +1906,151 @@ function selectSlot(resource, date, hour) {
   </section>
 </div>
 
-      <div v-else class="p-5 md:p-8">
-        <section class="rounded-xl border border-slate-200 bg-white p-8">
-          <p class="text-sm font-semibold text-indigo-600">Booking Diary workspace</p>
-          <h2 class="mt-2 text-xl font-bold text-slate-900">{{ activeView }}</h2>
-          <p class="mt-2 max-w-xl text-sm leading-6 text-slate-500">This section will be connected to your existing Frappe data after the Resource Desk calendar is in place.</p>
-          <button v-if="activeView !== 'Resource Desk'" @click="activeView = 'Resource Desk'" class="mt-5 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Open Resource Desk</button>
-        </section>
+     
+<div v-else-if="activeView === 'Bookings'" class="p-4 md:p-8">
+  <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div class="flex flex-col gap-4 border-b border-slate-200 p-5 md:flex-row md:items-center md:justify-between">
+      <div>
+        <h2 class="text-xl font-bold text-slate-900">All Bookings</h2>
+        <p class="mt-1 text-sm text-slate-500">
+          View and manage booking records.
+        </p>
       </div>
+
+      <button
+        type="button"
+        @click="loadBookingsPage"
+        class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+      >
+        Refresh
+      </button>
+    </div>
+
+    <div class="grid gap-3 border-b border-slate-100 bg-slate-50 p-4 sm:grid-cols-2">
+      <input
+        v-model="bookingsPageSearch"
+        type="search"
+        placeholder="Search ID, customer, or resource..."
+        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
+      />
+
+      <select
+        v-model="bookingsPageStatus"
+        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
+      >
+        <option>All statuses</option>
+        <option>Pending</option>
+        <option>Confirmed</option>
+        <option>Cancelled</option>
+      </select>
+    </div>
+
+    <p v-if="bookingsPageError" class="m-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+      {{ bookingsPageError }}
+    </p>
+
+    <div v-if="bookingsPageLoading" class="p-10 text-center text-sm text-slate-500">
+      Loading bookings…
+    </div>
+
+    <div v-else class="overflow-x-auto">
+      <table class="w-full min-w-[850px] text-left text-sm">
+        <thead class="bg-white text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-4 py-3">Booking ID</th>
+            <th class="px-4 py-3">Customer</th>
+            <th class="px-4 py-3">Resource</th>
+            <th class="px-4 py-3">Date</th>
+            <th class="px-4 py-3">Time</th>
+            <th class="px-4 py-3">Status</th>
+            <th class="px-4 py-3">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="booking in bookingsPageRecords.filter(b => {
+              const query = bookingsPageSearch.trim().toLowerCase()
+              const matchesSearch = !query ||
+                (b.booking_id || b.name || '').toLowerCase().includes(query) ||
+                (b.customer || '').toLowerCase().includes(query) ||
+                (b.resource || '').toLowerCase().includes(query)
+              const matchesStatus = bookingsPageStatus === 'All statuses' ||
+                b.status === bookingsPageStatus
+              return matchesSearch && matchesStatus
+            })"
+            :key="booking.name"
+            class="border-t border-slate-100 hover:bg-slate-50"
+          >
+            <td class="px-4 py-3 font-semibold text-slate-800">
+              {{ booking.booking_id || booking.name }}
+            </td>
+            <td class="px-4 py-3">{{ booking.customer || '—' }}</td>
+            <td class="px-4 py-3">{{ booking.resource || '—' }}</td>
+            <td class="px-4 py-3">{{ booking.booking_date || '—' }}</td>
+            <td class="px-4 py-3">
+              {{ booking.start_time || '—' }} – {{ booking.end_time || '—' }}
+            </td>
+            <td class="px-4 py-3">
+              <span
+                class="rounded-full px-2.5 py-1 text-xs font-semibold"
+                :class="booking.status === 'Confirmed'
+                  ? 'bg-blue-50 text-blue-700'
+                  : booking.status === 'Cancelled'
+                    ? 'bg-rose-50 text-rose-700'
+                    : 'bg-amber-50 text-amber-800'"
+              >
+                {{ booking.status || 'Pending' }}
+              </span>
+            </td>
+            <td class="px-4 py-3">
+              <button
+                type="button"
+                @click="openBooking({
+                  id: booking.booking_id || booking.name,
+                  docName: booking.name,
+                  title: booking.customer || 'Booking',
+                  resource: booking.resource,
+                  date: booking.booking_date,
+                  start: new Date(`${booking.booking_date}T${booking.start_time}`),
+                  end: new Date(`${booking.booking_date}T${booking.end_time}`),
+                  status: booking.status || 'Pending'
+                })"
+                class="font-semibold text-indigo-600 hover:text-indigo-800"
+              >
+                View
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p
+        v-if="!bookingsPageRecords.length"
+        class="p-10 text-center text-sm text-slate-500"
+      >
+        No bookings found.
+      </p>
+    </div>
+  </section>
+</div>
+
+<div v-else class="p-5 md:p-8">
+  <section class="rounded-xl border border-slate-200 bg-white p-8">
+    <p class="text-sm font-semibold text-indigo-600">Booking Diary workspace</p>
+    <h2 class="mt-2 text-xl font-bold text-slate-900">{{ activeView }}</h2>
+    <p class="mt-2 max-w-xl text-sm leading-6 text-slate-500">
+      This section will be connected to your existing Frappe data after the
+      Resource Desk calendar is in place.
+    </p>
+    <button
+      @click="activeView = 'Resource Desk'"
+      class="mt-5 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+    >
+      Open Resource Desk
+    </button>
+  </section>
+</div>
+
     </main>
   </div>
 </template>
