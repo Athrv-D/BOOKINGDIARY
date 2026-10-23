@@ -284,3 +284,24 @@ export async function getBookings() {
     limit_page_length: 500,
   })
 }
+
+
+export async function getBlackoutDates() {
+  return frappeGet('frappe.client.get_list', {
+    doctype: 'Blackout Date',
+    fields: JSON.stringify(['name', 'resource', 'blackout_date', 'reason', 'applies_globally']),
+    order_by: 'blackout_date desc',
+    limit_page_length: 500,
+  })
+}
+
+export async function createBlackoutDate({ resource = '', blackoutDate, reason = '', appliesGlobally = false }) {
+  const doc = {
+    doctype: 'Blackout Date',
+    resource: appliesGlobally ? '' : resource,
+    blackout_date: blackoutDate,
+    reason: reason.trim(),
+    applies_globally: appliesGlobally ? 1 : 0,
+  }
+  return frappePost('frappe.client.insert', { doc })
+}
