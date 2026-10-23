@@ -910,16 +910,6 @@ async function loadFormAvailability() {
   }
 }
 
-watch(
-  () => [
-    bookingFormOpen.value,
-    [...bookingForm.value.resources],
-    bookingForm.value.bookingDate,
-  ],
-  loadFormAvailability,
-  { deep: true },
-)
-
 const formAvailabilitySlots = computed(() => formAvailability.value.schedules.flatMap(day => (
   (day.slots || []).map(slot => ({ ...slot, resource: day.resource, date: day.date, is_blackout: day.is_blackout, blackout_reason: day.blackout_reason }))
 )))
@@ -934,6 +924,16 @@ const bookingForm = ref({
   customer: '',
   remarks: '',
 })
+
+watch(
+  () => [
+    bookingFormOpen.value,
+    [...bookingForm.value.resources],
+    bookingForm.value.bookingDate,
+  ],
+  loadFormAvailability,
+  { deep: true },
+)
 
 function openNewBooking(resource = null) {
   bookingError.value = ''
