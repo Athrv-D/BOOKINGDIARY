@@ -874,6 +874,56 @@ async function createBooking() {
 
 const bookingFormOpen = ref(false)
 
+const formAvailability = ref({ loading: false, error: '', schedules: [] })
+let formAvailabilityRequestId = 0
+
+async function loadFormAvailability() {
+  const requestId = ++formAvailabilityRequestId
+  const selectedResources = [...bookingForm.value.resources]
+  const bookingDate = bookingForm.value.bookingDate
+
+  formAvailability.value = { loading: false, error: '', schedules: [] }
+  if (!bookingFormOpen.value || !selectedResources.length || !bookingDate) return
+
+  formAvailability.value.loading = true
+  try {
+    const results = await Promise.all(selectedResources.map(async resource => {
+      const result = await getUserDaySchedule(resource, bookingDate, userTimezone.value)
+      return { resource, schedules: result.schedules || [] }
+    }))
+    if (requestId !== formAvailabilityRequestId) return
+    formAvailability.value = {
+      loading: false,
+      error: '',
+      schedules: results.flatMap(item => item.schedules.map(schedule => ({
+        ...schedule,
+        resource: item.resource,
+      }))),
+    }
+  } catch (error) {
+    if (requestId !== formAvailabilityRequestId) return
+    formAvailability.value = {
+      loading: false,
+      error: error.message || 'Could not load availability for this date.',
+      schedules: [],
+    }
+  }
+}
+
+watch(
+  () => [
+    bookingFormOpen.value,
+    [...bookingForm.value.resources],
+    bookingForm.value.bookingDate,
+  ],
+  loadFormAvailability,
+  { deep: true },
+)
+
+const formAvailabilitySlots = computed(() => formAvailability.value.schedules.flatMap(day => (
+  (day.slots || []).map(slot => ({ ...slot, resource: day.resource, date: day.date, is_blackout: day.is_blackout, blackout_reason: day.blackout_reason }))
+)))
+
 const bookingForm = ref({
   resources: [],
   bookingDate: dateKey(selectedDate.value),
@@ -1376,6 +1426,43 @@ function selectSlot(resource, date, hour) {
       <p class="mt-3 text-xs font-medium text-slate-600">
         Selected: {{ bookingForm.resources.length }} resource(s)
       </p>
+      <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h3 class="text-sm font-semibold text-slate-800">Availability for selected date</h3>
+          <span class="text-xs text-slate-500">{{ bookingForm.bookingDate || 'Choose a date' }}</span>
+        </div>
+        <p v-if="formAvailability.loading" class="mt-3 text-sm text-slate-500">Loading availability…</p>
+        <p v-else-if="formAvailability.error" class="mt-3 text-sm text-rose-700">{{ formAvailability.error }}</p>
+        <p v-else-if="!bookingForm.resources.length" class="mt-3 text-sm text-slate-500">Select a resource to see its available and booked slots.</p>
+        <div v-else-if="!formAvailability.schedules.length" class="mt-3 text-sm text-slate-500">No schedule information is available for this selection.</div>
+        <div v-else class="mt-3 space-y-3">
+          <div v-for="day in formAvailability.schedules" :key="day.resource + '-' + day.date" class="rounded-lg border border-slate-200 bg-white p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <p class="text-sm font-semibold text-slate-800">{{ resources.find(r => r.name === day.resource)?.resource_name || day.resource }}</p>
+              <span class="text-xs text-slate-500">{{ day.date }}</span>
+            </div>
+            <p v-if="day.is_blackout" class="mt-2 rounded-md bg-rose-50 px-2.5 py-2 text-sm text-rose-700">
+              Blocked for this date<span v-if="day.blackout_reason">: {{ day.blackout_reason }}</span>
+            </p>
+            <p v-else-if="!day.slots?.length" class="mt-2 text-sm text-slate-500">No configured available slots.</p>
+            <div v-else class="mt-2 flex flex-wrap gap-2">
+              <button
+                v-for="slot in day.slots"
+                :key="day.resource + '-' + day.date + '-' + slot.start_time"
+                type="button"
+                @click="bookingForm.startTime = slot.start_time; bookingForm.endTime = slot.end_time"
+                :disabled="slot.status !== 'available' || bookingForm.resources.length !== 1"
+                :title="bookingForm.resources.length > 1 ? 'Choose one resource to select a slot' : slot.status === 'available' ? 'Use this slot' : 'Already booked'"
+                class="rounded-md border px-2.5 py-1.5 text-xs font-semibold disabled:cursor-not-allowed"
+                :class="slot.status === 'available' ? (bookingForm.startTime === slot.start_time && bookingForm.endTime === slot.end_time ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100') : 'border-rose-200 bg-rose-50 text-rose-700 opacity-80'"
+              >
+                {{ slot.start_time?.slice(0, 5) }}–{{ slot.end_time?.slice(0, 5) }} · {{ slot.status === 'available' ? 'Free' : 'Booked' }}
+              </button>
+            </div>
+            <p v-if="bookingForm.resources.length > 1" class="mt-2 text-xs text-slate-500">Select one resource to apply a slot directly; group bookings are validated across all selected resources.</p>
+          </div>
+        </div>
+      </div>
     </fieldset>
 
     <label class="block text-sm font-medium text-slate-700">
