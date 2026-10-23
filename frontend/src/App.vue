@@ -714,6 +714,19 @@ function selectSlot(resource, date, hour) {
               {{ selectedBooking.title }}
             </p>
           </div>
+          <div class="col-span-2">
+  <p class="text-slate-500">Booking Type</p>
+  <p class="mt-1 font-medium text-slate-900">
+    {{ selectedBooking.booking_type || '—' }}
+  </p>
+</div>
+
+<div class="col-span-2">
+  <p class="text-slate-500">Remarks</p>
+  <p class="mt-1 whitespace-pre-wrap font-medium text-slate-900">
+    {{ selectedBooking.remarks || '—' }}
+  </p>
+</div>
         </div>
       </div>
 
