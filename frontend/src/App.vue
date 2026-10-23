@@ -20,6 +20,7 @@ import {
   getAvailability,
   createBlackoutDate,
   getCurrentUserRoles,
+  validateGroupBooking,
 } from './api'
 
 const activeView = ref('Resource Desk')
@@ -908,6 +909,80 @@ function openNewBooking() {
   bookingFormOpen.value = true
 }
 
+
+const liveBookingValidation = ref({ checking: false, valid: false, errors: [], resources: [] })
+let liveValidationTimer = null
+let liveValidationRequestId = 0
+
+watch(
+  () => [
+    bookingFormOpen.value,
+    [...bookingForm.value.resources],
+    bookingForm.value.bookingDate,
+    bookingForm.value.startTime,
+    bookingForm.value.endTime,
+    bookingForm.value.bookingType,
+    bookingForm.value.repeatUntil,
+  ],
+  (values) => {
+    if (liveValidationTimer) clearTimeout(liveValidationTimer)
+    const requestId = ++liveValidationRequestId
+    liveBookingValidation.value = { checking: false, valid: false, errors: [], resources: [] }
+
+    const [isOpen, selectedResources, bookingDate, startTime, endTime, bookingType, repeatUntil] = values
+    if (!isOpen || !selectedResources.length || !bookingDate || !startTime || !endTime) return
+
+    if (startTime >= endTime) {
+      liveBookingValidation.value = {
+        checking: false,
+        valid: false,
+        errors: ['End time must be after start time.'],
+        resources: [],
+      }
+      return
+    }
+
+    if (bookingType === 'Recurring' && (!repeatUntil || repeatUntil < bookingDate)) {
+      liveBookingValidation.value = {
+        checking: false,
+        valid: false,
+        errors: ['Please select a valid repeat-until date.'],
+        resources: [],
+      }
+      return
+    }
+
+    liveBookingValidation.value.checking = true
+    liveValidationTimer = setTimeout(async () => {
+      try {
+        const result = await validateGroupBooking({
+          resources: selectedResources,
+          bookingDate,
+          startTime: startTime.length === 5 ? `${startTime}:00` : startTime,
+          endTime: endTime.length === 5 ? `${endTime}:00` : endTime,
+          bookingType,
+          repeatUntil: bookingType === 'Recurring' ? repeatUntil : null,
+        })
+        if (requestId !== liveValidationRequestId) return
+        liveBookingValidation.value = {
+          checking: false,
+          valid: Boolean(result?.valid),
+          errors: result?.errors || [],
+          resources: result?.resources || [],
+        }
+      } catch (error) {
+        if (requestId !== liveValidationRequestId) return
+        liveBookingValidation.value = {
+          checking: false,
+          valid: false,
+          errors: [error.message || 'Could not validate this booking right now.'],
+          resources: [],
+        }
+      }
+    }, 350)
+  },
+)
+
 async function submitManualBooking() {
   bookingError.value = ''
   bookingSuccess.value = ''
@@ -929,6 +1004,17 @@ async function submitManualBooking() {
     (!form.repeatUntil || form.repeatUntil < form.bookingDate)
   ) {
     bookingError.value = 'Please select a valid repeat-until date.'
+    return
+  }
+
+  if (liveBookingValidation.value.checking) {
+    bookingError.value = 'Please wait while resource availability is checked.'
+    return
+  }
+
+  if (!liveBookingValidation.value.valid) {
+    bookingError.value = liveBookingValidation.value.errors.join(' ')
+      || 'Please resolve the booking validation errors before submitting.'
     return
   }
 
@@ -1369,8 +1455,39 @@ function selectSlot(resource, date, hour) {
     </label>
   </div>
 
+  <div
+    v-if="liveBookingValidation.checking"
+    class="mt-4 flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm text-sky-800"
+    role="status"
+  >
+    <span class="h-2 w-2 animate-pulse rounded-full bg-sky-500"></span>
+    Checking resource availability…
+  </div>
+
+  <div
+    v-else-if="liveBookingValidation.errors.length"
+    class="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"
+    role="alert"
+  >
+    <p class="font-semibold">Please fix the following:</p>
+    <ul class="mt-1 list-disc space-y-1 pl-5">
+      <li v-for="(error, index) in liveBookingValidation.errors" :key="index">
+        {{ error }}
+      </li>
+    </ul>
+  </div>
+
+  <div
+    v-else-if="liveBookingValidation.valid"
+    class="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800"
+    role="status"
+  >
+    <span class="font-semibold">Availability check passed.</span>
+    All selected resources passed validation. The server will check again when submitted.
+  </div>
+
   <p class="mt-3 text-xs text-slate-500">
-    Booking requests are checked against resource availability and booking rules when submitted.
+    Availability is checked as you edit the form and verified again when you submit.
   </p>
 
   <div class="mt-5 flex justify-end gap-3">
@@ -1384,10 +1501,10 @@ function selectSlot(resource, date, hour) {
     <button
       type="button"
       @click="submitManualBooking"
-      :disabled="bookingSubmitting"
+      :disabled="bookingSubmitting || liveBookingValidation.checking || !liveBookingValidation.valid"
       class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
     >
-      {{ bookingSubmitting ? 'Submitting…' : 'Submit booking' }}
+      {{ bookingSubmitting ? 'Submitting…' : liveBookingValidation.checking ? 'Checking availability…' : 'Submit booking' }}
     </button>
   </div>
 </div>
