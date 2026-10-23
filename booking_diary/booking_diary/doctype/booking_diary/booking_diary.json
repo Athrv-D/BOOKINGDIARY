@@ -6,6 +6,7 @@
  "engine": "InnoDB",
  "field_order": [
   "booking_id",
+  "group_booking_id",
   "resource",
   "booking_date",
   "start_time",
@@ -27,6 +28,13 @@
    "in_list_view": 1,
    "label": "Booking ID",
    "reqd": 1
+  },
+  {
+   "fieldname": "group_booking_id",
+   "fieldtype": "Data",
+   "in_list_view": 0,
+   "label": "Group Booking ID",
+   "read_only": 1
   },
   {
    "fieldname": "resource",
