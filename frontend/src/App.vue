@@ -1231,8 +1231,14 @@ function selectSlot(resource, date, hour) {
       aria-labelledby="new-booking-title"
     >
 
-  <div class="mb-5 flex items-center justify-between">
-    <h2  id="new-booking-title" class="text-lg font-bold text-slate-900">New Booking</h2>
+  <div class="mb-6 flex items-center justify-between border-b border-slate-100 pb-4">
+    <div class="flex items-center gap-3">
+      <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 text-xl font-semibold text-white shadow-sm shadow-indigo-200" aria-hidden="true">＋</span>
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600">Booking Diary</p>
+        <h2 id="new-booking-title" class="mt-0.5 text-xl font-bold tracking-tight text-slate-900">New Booking</h2>
+      </div>
+    </div>
     <button
       type="button"
       @click="bookingFormOpen = false"
@@ -1375,10 +1381,16 @@ function selectSlot(resource, date, hour) {
       aria-modal="true"
       @submit.prevent="saveResource"
     >
-      <div class="mb-6 flex items-center justify-between">
-        <h2 class="text-xl font-bold text-slate-900">
-          {{ resourceEditMode ? 'Edit Resource' : 'Create Resource' }}
-        </h2>
+      <div class="mb-6 flex items-center justify-between border-b border-slate-100 pb-4">
+        <div class="flex items-center gap-3">
+          <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 text-lg text-white shadow-sm shadow-indigo-200" aria-hidden="true">▦</span>
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600">Booking Diary</p>
+            <h2 class="mt-0.5 text-xl font-bold tracking-tight text-slate-900">
+              {{ resourceEditMode ? 'Edit Resource' : 'Create Resource' }}
+            </h2>
+          </div>
+        </div>
         <button
           type="button"
           @click="resourceFormOpen = false"
@@ -1477,11 +1489,14 @@ function selectSlot(resource, date, hour) {
       aria-modal="true"
       @submit.prevent="saveResourceAvailability"
     >
-      <div class="mb-5 flex items-center justify-between">
-        <div>
-          <h2 class="text-xl font-bold text-slate-900">
-            Resource Availability
-          </h2>
+      <div class="mb-6 flex items-center justify-between border-b border-slate-100 pb-4">
+        <div class="flex items-center gap-3">
+          <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-lg text-white shadow-sm shadow-emerald-200" aria-hidden="true">◷</span>
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Resource settings</p>
+            <h2 class="mt-0.5 text-xl font-bold tracking-tight text-slate-900">
+              Resource Availability
+            </h2>
           <p class="mt-1 text-sm text-slate-500">
             {{ availabilityResource?.resource_name || availabilityResource?.name }}
           </p>
@@ -1581,8 +1596,14 @@ function selectSlot(resource, date, hour) {
   v-if="selectedBooking"
   class="mx-5 mt-4 rounded-xl border border-slate-200 bg-white p-5 md:mx-8"
 >
-  <div class="mb-4 flex items-center justify-between">
-    <h2 class="text-lg font-bold text-slate-900">Booking Details</h2>
+  <div class="mb-5 flex items-center justify-between border-b border-slate-100 pb-4">
+    <div class="flex items-center gap-3">
+      <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-lg text-indigo-700" aria-hidden="true">▤</span>
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600">Booking Diary</p>
+        <h2 class="mt-0.5 text-lg font-bold tracking-tight text-slate-900">Booking Details</h2>
+      </div>
+    </div>
     <button
       type="button"
       @click="selectedBooking = null"
@@ -2124,10 +2145,14 @@ function selectSlot(resource, date, hour) {
 
       <div v-if="blackoutModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" @click.self="blackoutModalOpen = false">
         <section role="dialog" aria-modal="true" aria-labelledby="blackout-title" class="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl">
-          <div class="flex items-start justify-between border-b border-slate-100 p-5">
-            <div>
-              <h2 id="blackout-title" class="text-lg font-bold text-slate-900">Add blackout date</h2>
-              <p class="mt-1 text-sm text-slate-500">Block bookings for a selected date.</p>
+          <div class="flex items-start justify-between border-b border-slate-100 bg-gradient-to-r from-rose-50 via-white to-white p-5">
+            <div class="flex items-start gap-3">
+              <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-600 text-lg text-white shadow-sm shadow-rose-200" aria-hidden="true">⛔</span>
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.16em] text-rose-700">Booking Diary</p>
+                <h2 id="blackout-title" class="mt-0.5 text-lg font-bold tracking-tight text-slate-900">Add blackout date</h2>
+                <p class="mt-1 text-sm text-slate-500">Block bookings for a selected date.</p>
+              </div>
             </div>
             <button type="button" aria-label="Close" @click="blackoutModalOpen = false" class="rounded-lg px-2 py-1 text-xl text-slate-400 hover:bg-slate-100">×</button>
           </div>
