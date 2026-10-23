@@ -175,3 +175,11 @@ export async function createBooking({resource,bookingDate,startTime,endTime,book
   return frappePost('frappe.client.insert',{doc})
   
 }
+
+
+export async function getBooking(name) {
+  return frappeGet('frappe.client.get', {
+    doctype: 'Booking Diary',
+    name,
+  })
+}
