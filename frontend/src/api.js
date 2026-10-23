@@ -183,3 +183,8 @@ export async function getBooking(name) {
     name,
   })
 }
+
+
+export async function updateBooking(doc) {
+  return frappePost('frappe.client.save', { doc })
+}

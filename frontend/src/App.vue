@@ -7,6 +7,7 @@ import {
   getMultiDaySchedule,
   getUserDaySchedule,
   getBooking,
+  updateBooking,
   createBooking as submitBooking,
 } from './api'
 
@@ -421,6 +422,9 @@ function timelineAvailabilityStyle(slot, selectedDay) {
 
 
 const selectedBooking = ref(null)
+const bookingEditMode = ref(false)
+const bookingUpdateError = ref('')
+const bookingUpdating = ref(false)
 const bookingDetailsLoading = ref(false)
 const bookingDetailsError = ref('')
 
@@ -668,6 +672,13 @@ function selectSlot(resource, date, hour) {
         >
           ×
         </button>
+        <button
+  type="button"
+  @click="bookingEditMode = true"
+  class="rounded-lg border border-indigo-200 px-5 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+>
+  Edit Booking
+</button>
       </div>
 
       <div class="space-y-4 text-sm">
