@@ -48,6 +48,39 @@ const resourceForm = ref({
 })
 
 
+const availabilityModalOpen = ref(false)
+const availabilityResource = ref(null)
+const availabilityLoading = ref(false)
+const availabilitySaving = ref(false)
+const availabilityError = ref('')
+const availabilityRecords = ref([])
+
+const availabilityDays = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+]
+
+const availabilityForm = ref({
+  availability_type: 'Multiple Days',
+  day_of_week: 'Monday',
+  start_time: '09:00',
+  end_time: '17:00',
+  available: true,
+  weekly_schedule: availabilityDays.map(day => ({
+    day_of_week: day,
+    start_time: '09:00',
+    end_time: '17:00',
+    available: !['Saturday', 'Sunday'].includes(day),
+  })),
+})
+
+
+
 
 const userTimezone = ref('UTC')
 const bookings = ref([])
@@ -1575,6 +1608,13 @@ function selectSlot(resource, date, hour) {
               >
                 Edit
               </button>
+                <button
+      type="button"
+      @click="openResourceAvailability(resource)"
+      class="font-semibold text-emerald-700 hover:text-emerald-800"
+    >
+      Availability
+    </button>
             </td>
           </tr>
         </tbody>

@@ -219,3 +219,47 @@ export async function getResource(name) {
 export async function updateResource(doc) {
   return frappePost('frappe.client.save', { doc })
 }
+
+
+export async function getResourceAvailabilities(resource) {
+  return frappeGet(
+    'frappe.client.get_list',
+    {
+      doctype: 'Availability',
+      fields: JSON.stringify([
+        'name',
+        'resource',
+        'availability_type',
+        'day_of_week',
+        'start_time',
+        'end_time',
+        'available',
+      ]),
+      filters: JSON.stringify({ resource }),
+      order_by: 'modified desc',
+      limit_page_length: 100,
+    },
+  )
+}
+
+export async function getAvailability(name) {
+  return frappeGet('frappe.client.get', {
+    doctype: 'Availability',
+    name,
+  })
+}
+
+export async function createAvailability(doc) {
+  return frappePost('frappe.client.insert', { doc })
+}
+
+export async function updateAvailability(doc) {
+  return frappePost('frappe.client.save', { doc })
+}
+
+export async function deleteAvailability(name) {
+  return frappePost('frappe.client.delete', {
+    doctype: 'Availability',
+    name,
+  })
+}
