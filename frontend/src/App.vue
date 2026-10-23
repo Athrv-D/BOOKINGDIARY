@@ -12,6 +12,9 @@ import {
   getResource,
   createResource,
   updateResource,
+  createAvailability,
+  updateAvailability,
+  deleteAvailability,
 } from './api'
 
 const activeView = ref('Resource Desk')
@@ -178,6 +181,139 @@ async function saveResource() {
     resourceSaving.value = false
   }
 }
+
+
+async function openResourceAvailability(resource) {
+  availabilityResource.value = resource
+  availabilityError.value = ''
+  availabilityRecords.value = []
+  availabilityLoading.value = true
+
+  try {
+    availabilityRecords.value = await getResourceAvailabilities(resource.name)
+
+    const weeklyRecord = availabilityRecords.value.find(
+      record => record.availability_type === 'Multiple Days'
+    )
+
+    if (weeklyRecord) {
+      const fullRecord = await getAvailability(weeklyRecord.name)
+
+      availabilityForm.value = {
+        availability_type: 'Multiple Days',
+        day_of_week: 'Monday',
+        start_time: '09:00',
+        end_time: '17:00',
+        available: true,
+        weekly_schedule: availabilityDays.map(day => {
+          const savedDay = (fullRecord.weekly_schedule || []).find(
+            item => item.day_of_week === day
+          )
+
+          return savedDay
+            ? {
+                ...savedDay,
+                available: Boolean(savedDay.available),
+                start_time: String(savedDay.start_time || '09:00').slice(0, 5),
+                end_time: String(savedDay.end_time || '17:00').slice(0, 5),
+              }
+            : {
+                day_of_week: day,
+                start_time: '09:00',
+                end_time: '17:00',
+                available: false,
+              }
+        }),
+      }
+    } else {
+      availabilityForm.value = {
+        availability_type: 'Multiple Days',
+        day_of_week: 'Monday',
+        start_time: '09:00',
+        end_time: '17:00',
+        available: true,
+        weekly_schedule: availabilityDays.map(day => ({
+          day_of_week: day,
+          start_time: '09:00',
+          end_time: '17:00',
+          available: !['Saturday', 'Sunday'].includes(day),
+        })),
+      }
+    }
+
+    availabilityModalOpen.value = true
+  } catch (error) {
+    availabilityError.value =
+      error.message || 'Could not load resource availability.'
+  } finally {
+    availabilityLoading.value = false
+  }
+}
+
+async function saveResourceAvailability() {
+  availabilityError.value = ''
+
+  const form = availabilityForm.value
+  const resource = availabilityResource.value
+
+  if (!resource) {
+    availabilityError.value = 'Select a resource first.'
+    return
+  }
+
+  for (const day of form.weekly_schedule) {
+    if (
+      day.available &&
+      (!day.start_time || !day.end_time || day.start_time >= day.end_time)
+    ) {
+      availabilityError.value =
+        `Set a valid start and end time for ${day.day_of_week}.`
+      return
+    }
+  }
+
+  availabilitySaving.value = true
+
+  try {
+    const existing = availabilityRecords.value.find(
+      record => record.availability_type === 'Multiple Days'
+    )
+
+    const doc = {
+      doctype: 'Availability',
+      ...(existing ? { name: existing.name } : {}),
+      resource: resource.name,
+      availability_type: 'Multiple Days',
+      weekly_schedule: form.weekly_schedule.map(day => ({
+        doctype: 'Availability Day',
+        day_of_week: day.day_of_week,
+        start_time: `${day.start_time}:00`,
+        end_time: `${day.end_time}:00`,
+        available: day.available ? 1 : 0,
+      })),
+    }
+
+    if (existing) {
+      const fullRecord = await getAvailability(existing.name)
+      await updateAvailability({
+        ...fullRecord,
+        ...doc,
+        weekly_schedule: doc.weekly_schedule,
+      })
+    } else {
+      await createAvailability(doc)
+    }
+
+    availabilityModalOpen.value = false
+    await loadSchedule()
+  } catch (error) {
+    availabilityError.value =
+      error.message || 'Could not save resource availability.'
+  } finally {
+    availabilitySaving.value = false
+  }
+}
+
 
 
 async function loadSchedule() {
@@ -1230,6 +1366,118 @@ function selectSlot(resource, date, hour) {
         >
           {{ resourceSaving ? 'Saving…' : 'Save Resource' }}
         </button>
+      </div>
+    </form>
+  </div>
+</Teleport>
+
+<Teleport to="body">
+  <div
+    v-if="availabilityModalOpen"
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4"
+    @click.self="availabilityModalOpen = false"
+  >
+    <form
+      class="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
+      role="dialog"
+      aria-modal="true"
+      @submit.prevent="saveResourceAvailability"
+    >
+      <div class="mb-5 flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">
+            Resource Availability
+          </h2>
+          <p class="mt-1 text-sm text-slate-500">
+            {{ availabilityResource?.resource_name || availabilityResource?.name }}
+          </p>
+        </div>
+        <button
+          type="button"
+          @click="availabilityModalOpen = false"
+          class="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+        >
+          Close
+        </button>
+      </div>
+
+      <p v-if="availabilityLoading" class="py-6 text-center text-slate-500">
+        Loading availability…
+      </p>
+
+      <div v-else>
+        <p class="mb-4 text-sm text-slate-600">
+          Set the working hours for each day. Uncheck a day when the resource
+          is unavailable.
+        </p>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-50 text-slate-600">
+              <tr>
+                <th class="px-3 py-3">Day</th>
+                <th class="px-3 py-3">Available</th>
+                <th class="px-3 py-3">Start time</th>
+                <th class="px-3 py-3">End time</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(day, index) in availabilityForm.weekly_schedule"
+                :key="day.day_of_week"
+                class="border-t border-slate-100"
+              >
+                <td class="px-3 py-3 font-medium text-slate-800">
+                  {{ day.day_of_week }}
+                </td>
+                <td class="px-3 py-3">
+                  <input
+                    v-model="day.available"
+                    type="checkbox"
+                    class="h-4 w-4 rounded border-slate-300"
+                  />
+                </td>
+                <td class="px-3 py-3">
+                  <input
+                    v-model="day.start_time"
+                    type="time"
+                    :disabled="!day.available"
+                    class="rounded-lg border border-slate-300 px-2 py-2 disabled:bg-slate-100"
+                  />
+                </td>
+                <td class="px-3 py-3">
+                  <input
+                    v-model="day.end_time"
+                    type="time"
+                    :disabled="!day.available"
+                    class="rounded-lg border border-slate-300 px-2 py-2 disabled:bg-slate-100"
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p v-if="availabilityError" class="mt-4 text-sm text-red-600">
+          {{ availabilityError }}
+        </p>
+
+        <div class="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            @click="availabilityModalOpen = false"
+            class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            :disabled="availabilitySaving || availabilityLoading"
+            class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {{ availabilitySaving ? 'Saving…' : 'Save Availability' }}
+          </button>
+        </div>
       </div>
     </form>
   </div>
