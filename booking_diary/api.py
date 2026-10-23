@@ -285,3 +285,10 @@ def cancel_booking(booking_name):
         "booking_id": booking.booking_id,
         "status": booking.status,
     }
+
+
+@frappe.whitelist()
+def get_current_user():
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in.")
+    return frappe.session.user
