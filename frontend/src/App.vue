@@ -18,6 +18,7 @@ import {
   deleteAvailability,
   getResourceAvailabilities,
   getAvailability,
+  createBlackoutDate,
 } from './api'
 
 const activeView = ref('Resource Desk')
@@ -101,6 +102,16 @@ const bookingsPageStatus = ref('All statuses')
 const resourceSchedules = ref({})
 const scheduleLoading = ref(false)
 const scheduleError = ref('')
+
+const blackoutModalOpen = ref(false)
+const blackoutSaving = ref(false)
+const blackoutError = ref('')
+const blackoutForm = ref({
+  blackout_date: '',
+  resource: 'All resources',
+  applies_globally: true,
+  reason: '',
+})
 
  
 async function loadResources() {
@@ -341,6 +352,46 @@ async function saveResourceAvailability() {
   }
 }
 
+
+
+function openBlackoutForm() {
+  blackoutError.value = ''
+  blackoutForm.value = {
+    blackout_date: dateKey(selectedDate.value),
+    resource: resourceFilter.value !== 'All resources' ? resourceFilter.value : 'All resources',
+    applies_globally: resourceFilter.value === 'All resources',
+    reason: '',
+  }
+  blackoutModalOpen.value = true
+}
+
+async function saveBlackoutDate() {
+  blackoutError.value = ''
+  if (!blackoutForm.value.blackout_date) {
+    blackoutError.value = 'Choose a blackout date.'
+    return
+  }
+  if (!blackoutForm.value.applies_globally && !blackoutForm.value.resource) {
+    blackoutError.value = 'Choose a resource or apply the blackout globally.'
+    return
+  }
+
+  blackoutSaving.value = true
+  try {
+    await createBlackoutDate({
+      blackoutDate: blackoutForm.value.blackout_date,
+      resource: blackoutForm.value.resource === 'All resources' ? '' : blackoutForm.value.resource,
+      appliesGlobally: blackoutForm.value.applies_globally,
+      reason: blackoutForm.value.reason,
+    })
+    blackoutModalOpen.value = false
+    await loadSchedule()
+  } catch (error) {
+    blackoutError.value = error.message || 'Could not save blackout date.'
+  } finally {
+    blackoutSaving.value = false
+  }
+}
 
 
 async function loadSchedule() {
@@ -1567,6 +1618,9 @@ function selectSlot(resource, date, hour) {
                 <button @click="navigate(1)" aria-label="Next period" class="px-3 py-2 text-lg text-slate-600 hover:bg-slate-50">›</button>
               </div>
               <h3 class="min-w-40 text-sm font-bold text-slate-800">{{ viewTitle }}</h3>
+              <button type="button" @click="openBlackoutForm" class="ml-auto inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100">
+                <span aria-hidden="true">⛔</span> Manage blackout
+              </button>
             </div>
           </div>
 
@@ -2051,6 +2105,44 @@ function selectSlot(resource, date, hour) {
   </section>
 </div>
 
+
+      <div v-if="blackoutModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" @click.self="blackoutModalOpen = false">
+        <section role="dialog" aria-modal="true" aria-labelledby="blackout-title" class="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl">
+          <div class="flex items-start justify-between border-b border-slate-100 p-5">
+            <div>
+              <h2 id="blackout-title" class="text-lg font-bold text-slate-900">Add blackout date</h2>
+              <p class="mt-1 text-sm text-slate-500">Block bookings for a selected date.</p>
+            </div>
+            <button type="button" aria-label="Close" @click="blackoutModalOpen = false" class="rounded-lg px-2 py-1 text-xl text-slate-400 hover:bg-slate-100">×</button>
+          </div>
+          <form class="space-y-4 p-5" @submit.prevent="saveBlackoutDate">
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold text-slate-700">Date</span>
+              <input v-model="blackoutForm.blackout_date" type="date" required class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+            </label>
+            <label class="flex items-start gap-3 rounded-lg border border-slate-200 p-3">
+              <input v-model="blackoutForm.applies_globally" type="checkbox" class="mt-1 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+              <span><span class="block text-sm font-semibold text-slate-800">Apply to all resources</span><span class="mt-0.5 block text-xs text-slate-500">No resource can be booked on this date.</span></span>
+            </label>
+            <label v-if="!blackoutForm.applies_globally" class="block">
+              <span class="mb-1.5 block text-sm font-semibold text-slate-700">Resource</span>
+              <select v-model="blackoutForm.resource" required class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm">
+                <option disabled value="All resources">Choose a resource</option>
+                <option v-for="resource in resources" :key="resource.name" :value="resource.name">{{ resource.resource_name || resource.name }}</option>
+              </select>
+            </label>
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold text-slate-700">Reason <span class="font-normal text-slate-400">(optional)</span></span>
+              <textarea v-model="blackoutForm.reason" rows="3" placeholder="e.g. Public holiday, maintenance, private event" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"></textarea>
+            </label>
+            <p v-if="blackoutError" class="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{{ blackoutError }}</p>
+            <div class="flex justify-end gap-3 border-t border-slate-100 pt-4">
+              <button type="button" @click="blackoutModalOpen = false" class="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+              <button type="submit" :disabled="blackoutSaving" class="rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60">{{ blackoutSaving ? 'Saving…' : 'Save blackout' }}</button>
+            </div>
+          </form>
+        </section>
+      </div>
     </main>
   </div>
 </template>
