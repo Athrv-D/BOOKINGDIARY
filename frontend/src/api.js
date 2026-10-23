@@ -184,6 +184,26 @@ export async function createBooking({
   })
 }
 
+
+export async function validateGroupBooking({
+  resources,
+  bookingDate,
+  startTime,
+  endTime,
+  bookingType = 'Single Slot',
+  repeatUntil = null,
+}) {
+  return frappeGet('booking_diary.api.validate_group_booking', {
+    resources: JSON.stringify(resources || []),
+    booking_date: bookingDate,
+    start_time: startTime,
+    end_time: endTime,
+    booking_type: bookingType,
+    repeat_until: bookingType === 'Recurring' ? repeatUntil : '',
+  })
+}
+
+
 export async function getBooking(name) {
   return frappeGet('frappe.client.get', {
     doctype: 'Booking Diary',
