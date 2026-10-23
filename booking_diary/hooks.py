@@ -154,6 +154,12 @@ app_license = "mit"
 # Scheduled Tasks
 # ---------------
 
+scheduler_events = {
+    "hourly": [
+        "booking_diary.tasks.complete_elapsed_bookings"
+    ],
+}
+
 # scheduler_events = {
 # 	"all": [
 # 		"booking_diary.tasks.all"
