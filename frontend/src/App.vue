@@ -358,7 +358,7 @@ function openBlackoutForm() {
   blackoutError.value = ''
   blackoutForm.value = {
     blackout_date: dateKey(selectedDate.value),
-    resource: resourceFilter.value !== 'All resources' ? resourceFilter.value : 'All resources',
+    resource: resourceFilter.value !== 'All resources' ? resourceFilter.value : (resources.value[0]?.name || ''),
     applies_globally: resourceFilter.value === 'All resources',
     reason: '',
   }
@@ -380,7 +380,7 @@ async function saveBlackoutDate() {
   try {
     await createBlackoutDate({
       blackoutDate: blackoutForm.value.blackout_date,
-      resource: blackoutForm.value.resource === 'All resources' ? '' : blackoutForm.value.resource,
+      resource: blackoutForm.value.resource,
       appliesGlobally: blackoutForm.value.applies_globally,
       reason: blackoutForm.value.reason,
     })
@@ -2127,7 +2127,7 @@ function selectSlot(resource, date, hour) {
             <label v-if="!blackoutForm.applies_globally" class="block">
               <span class="mb-1.5 block text-sm font-semibold text-slate-700">Resource</span>
               <select v-model="blackoutForm.resource" required class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm">
-                <option disabled value="All resources">Choose a resource</option>
+                <option disabled value="">Choose a resource</option>
                 <option v-for="resource in resources" :key="resource.name" :value="resource.name">{{ resource.resource_name || resource.name }}</option>
               </select>
             </label>
