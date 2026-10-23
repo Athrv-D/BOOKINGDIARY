@@ -604,6 +604,7 @@ async function submitManualBooking() {
 
 const selectedBookingSlot = ref(null)
 
+
 function selectSlot(resource, date, hour) {
   selectedBookingSlot.value = {
     resource,
@@ -611,7 +612,10 @@ function selectSlot(resource, date, hour) {
     startTime: `${String(hour).padStart(2, '0')}:00:00`,
     endTime: `${String(hour + 1).padStart(2, '0')}:00:00`,
   }
+
+  openNewBooking()
 }
+
 
 </script>
 
@@ -809,12 +813,22 @@ function selectSlot(resource, date, hour) {
   </div>
 </Teleport>
 
-<div
-  v-if="bookingFormOpen"
-  class="mx-5 mt-4 rounded-xl border border-slate-200 bg-white p-5 md:mx-8"
->
+
+<Teleport to="body">
+  <div
+    v-if="bookingFormOpen"
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4"
+    @click.self="bookingFormOpen = false"
+  >
+    <div
+      class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-booking-title"
+    >
+
   <div class="mb-5 flex items-center justify-between">
-    <h2 class="text-lg font-bold text-slate-900">New Booking</h2>
+    <h2  id="new-booking-title" class="text-lg font-bold text-slate-900">New Booking</h2>
     <button
       type="button"
       @click="bookingFormOpen = false"
@@ -942,6 +956,8 @@ function selectSlot(resource, date, hour) {
     </button>
   </div>
 </div>
+</div>
+</Teleport>
 <div
   v-if="selectedBooking"
   class="mx-5 mt-4 rounded-xl border border-slate-200 bg-white p-5 md:mx-8"

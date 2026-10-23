@@ -32,11 +32,32 @@ class BookingDiary(Document):
         self.validate_status_transition()
         self.validate_field_protection()
         self.validate_time()
+                # Only rerun scheduling validations when scheduling fields change.
+        previous_doc = self.get_doc_before_save()
+
+        scheduling_fields = (
+            "resource",
+            "booking_date",
+            "start_time",
+            "end_time",
+            "booking_type",
+            "repeat_until",
+            "status",
+        )
+
+        schedule_changed = (
+            previous_doc is None
+            or any(
+                self.get(field) != previous_doc.get(field)
+                for field in scheduling_fields
+            )
+        )
+
 
 
         # Only active bookings need scheduling validations.
         # Completed and cancelled bookings must remain editable.
-        if self.status in RESERVING_STATUSES:
+        if self.status in RESERVING_STATUSES and schedule_changed:
             if self.booking_type == "Recurring":
                 self.validate_recurring_range()
             else:
