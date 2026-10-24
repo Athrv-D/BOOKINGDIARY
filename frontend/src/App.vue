@@ -25,10 +25,47 @@ import {
   cancelBooking,
 } from './api'
 
-const activeView = ref('Resource Desk')
+const activeView = ref('Overview')
 const canManageResources = ref(false)
 const currentUserRoles = ref([])
 const currentUser = ref('')
+const isBookingManager = computed(() =>
+  currentUser.value === 'Administrator' ||
+  currentUserRoles.value.includes('System Manager') ||
+  currentUserRoles.value.includes('Booking Manager')
+)
+const overviewRecords = ref([])
+const overviewLoading = ref(false)
+const overviewError = ref('')
+const overviewToday = computed(() => dateKey(new Date()))
+const overviewTodayBookings = computed(() => overviewRecords.value.filter(b => b.booking_date === overviewToday.value && b.status !== 'Cancelled'))
+const overviewPending = computed(() => overviewRecords.value.filter(b => b.status === 'Pending').slice(0, 8))
+const overviewUpcoming = computed(() => overviewRecords.value.filter(b => b.booking_date >= overviewToday.value && ['Pending', 'Confirmed'].includes(b.status)).slice(0, 8))
+const overviewConfirmedCount = computed(() => overviewRecords.value.filter(b => b.status === 'Confirmed' && b.booking_date >= overviewToday.value).length)
+
+async function loadOverview() {
+  overviewLoading.value = true
+  overviewError.value = ''
+  try {
+    overviewRecords.value = await getOverviewBookings()
+  } catch (error) {
+    overviewError.value = error.message || 'Could not load overview.'
+  } finally {
+    overviewLoading.value = false
+  }
+}
+
+async function setBookingDecision(booking, status) {
+  if (!isBookingManager.value) return
+  const label = status === 'Confirmed' ? 'confirm' : 'reject'
+  if (!window.confirm(`${label === 'confirm' ? 'Confirm' : 'Reject'} this booking?`)) return
+  try {
+    await updateManagedBooking({ name: booking.name, status })
+    await Promise.all([loadOverview(), loadBookingsPage(), loadSchedule()])
+  } catch (error) {
+    overviewError.value = error.message || `Could not ${label} booking.`
+  }
+}
 const calendarView = ref('Week')
 const selectedDate = ref(new Date())
 const resourceFilter = ref('All resources')
@@ -507,6 +544,7 @@ onMounted(async () => {
 
   await loadResources()
   await loadSchedule()
+  await loadOverview()
 })
 
 
@@ -799,7 +837,14 @@ async function saveBookingChanges() {
   bookingUpdating.value = true
 
   try {
-    const updatedRecord = await updateBooking(selectedBooking.value)
+    const updatedRecord = await updateManagedBooking({
+      name: selectedBooking.value.name || selectedBooking.value.docName,
+      resource: selectedBooking.value.resource,
+      booking_date: selectedBooking.value.booking_date || selectedBooking.value.date,
+      start_time: selectedBooking.value.start_time || selectedBooking.value.start,
+      end_time: selectedBooking.value.end_time || selectedBooking.value.end,
+      remarks: selectedBooking.value.remarks || '',
+    })
 
     selectedBooking.value = {
       ...selectedBooking.value,
@@ -1246,7 +1291,8 @@ function selectSlot(resource, date, hour) {
           v-for="item in navigation"
           :key="item.name"
           @click="activeView = item.name
-          if (item.name === 'Bookings') loadBookingsPage()"
+          if (item.name === 'Bookings') loadBookingsPage()
+          if (item.name === 'Overview') loadOverview()"
           class="flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition"
           :class="activeView === item.name ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'"
         >
@@ -1926,7 +1972,37 @@ function selectSlot(resource, date, hour) {
   </div>
 </div>
 
-      <div v-if="activeView === 'Resource Desk'" class="p-4 md:p-8">
+      <div v-if="activeView === 'Overview'" class="space-y-6 p-4 md:p-8">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div><h2 class="text-2xl font-bold tracking-tight text-slate-900">{{ isBookingManager ? 'Booking Operations' : 'My Booking Overview' }}</h2><p class="mt-1 text-sm text-slate-500">{{ isBookingManager ? 'Review all bookings and resolve pending confirmations.' : 'Your bookings, statuses, and upcoming schedule.' }}</p></div>
+          <button type="button" @click="loadOverview" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Refresh</button>
+        </div>
+        <p v-if="overviewError" class="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{{ overviewError }}</p>
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><p class="text-sm text-slate-500">{{ isBookingManager ? "Today's bookings (all users)" : "My bookings today" }}</p><p class="mt-2 text-3xl font-bold text-slate-900">{{ overviewTodayBookings.length }}</p></div>
+          <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><p class="text-sm text-slate-500">{{ isBookingManager ? 'Pending confirmations' : 'My pending bookings' }}</p><p class="mt-2 text-3xl font-bold text-amber-600">{{ overviewRecords.filter(b => b.status === 'Pending').length }}</p></div>
+          <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><p class="text-sm text-slate-500">Upcoming confirmed</p><p class="mt-2 text-3xl font-bold text-indigo-700">{{ overviewConfirmedCount }}</p></div>
+          <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><p class="text-sm text-slate-500">{{ isBookingManager ? 'Available resources' : 'My total bookings' }}</p><p class="mt-2 text-3xl font-bold text-emerald-700">{{ isBookingManager ? resources.filter(r => r.available === 1 || r.available === true).length : overviewRecords.length }}</p></div>
+        </div>
+        <div v-if="overviewLoading" class="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Loading overview…</div>
+        <div v-else class="grid gap-6 xl:grid-cols-2">
+          <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="flex items-center justify-between border-b border-slate-100 p-5"><div><h3 class="font-bold text-slate-900">{{ isBookingManager ? 'Needs confirmation' : 'My pending bookings' }}</h3><p class="mt-1 text-xs text-slate-500">{{ isBookingManager ? 'Confirm or reject requests.' : 'Waiting for a decision.' }}</p></div><span class="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">{{ overviewRecords.filter(b => b.status === 'Pending').length }}</span></div>
+            <div v-if="!overviewPending.length" class="p-6 text-sm text-slate-500">No pending bookings.</div>
+            <div v-for="booking in overviewPending" :key="booking.name" class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4 last:border-b-0">
+              <button type="button" @click="openBooking({ id: booking.booking_id || booking.name, docName: booking.name, title: booking.customer || 'Booking', resource: booking.resource, date: booking.booking_date, start: booking.start_time, end: booking.end_time, status: booking.status })" class="min-w-0 text-left"><span class="block font-semibold text-slate-800">{{ booking.customer || booking.booking_id || booking.name }}</span><span class="mt-1 block text-xs text-slate-500">{{ booking.resource }} · {{ booking.booking_date }} · {{ booking.start_time }}–{{ booking.end_time }}</span></button>
+              <div v-if="isBookingManager" class="flex gap-2"><button type="button" @click="setBookingDecision(booking, 'Confirmed')" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700">Confirm</button><button type="button" @click="setBookingDecision(booking, 'Cancelled')" class="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50">Reject</button></div><span v-else class="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">Pending</span>
+            </div>
+          </section>
+          <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="border-b border-slate-100 p-5"><h3 class="font-bold text-slate-900">{{ isBookingManager ? 'Upcoming bookings' : 'My upcoming bookings' }}</h3><p class="mt-1 text-xs text-slate-500">Pending and confirmed bookings from today onward.</p></div>
+            <div v-if="!overviewUpcoming.length" class="p-6 text-sm text-slate-500">No upcoming bookings found.</div>
+            <button v-for="booking in overviewUpcoming" :key="booking.name" type="button" @click="openBooking({ id: booking.booking_id || booking.name, docName: booking.name, title: booking.customer || 'Booking', resource: booking.resource, date: booking.booking_date, start: booking.start_time, end: booking.end_time, status: booking.status })" class="flex w-full flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4 text-left last:border-b-0 hover:bg-slate-50"><span><span class="block font-semibold text-slate-800">{{ booking.customer || booking.booking_id || booking.name }}</span><span class="mt-1 block text-xs text-slate-500">{{ booking.resource }} · {{ booking.booking_date }} · {{ booking.start_time }}–{{ booking.end_time }}</span></span><span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="booking.status === 'Confirmed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'">{{ booking.status }}</span></button>
+          </section>
+        </div>
+      </div>
+
+      <div v-else-if="activeView === 'Resource Desk'" class="p-4 md:p-8">
         <div class="mb-5 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h2 class="text-2xl font-bold tracking-tight text-slate-900">Resource calendar</h2>
