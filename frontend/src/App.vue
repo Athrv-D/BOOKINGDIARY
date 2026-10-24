@@ -844,6 +844,7 @@ async function saveBookingChanges() {
       start_time: selectedBooking.value.start_time || selectedBooking.value.start,
       end_time: selectedBooking.value.end_time || selectedBooking.value.end,
       remarks: selectedBooking.value.remarks || '',
+      status: selectedBooking.value.status,
     })
 
     selectedBooking.value = {
@@ -1356,6 +1357,7 @@ function selectSlot(resource, date, hour) {
           ×
         </button>
         <button
+  v-if="isBookingManager"
   type="button"
   @click="bookingEditMode = true"
   class="rounded-lg border border-indigo-200 px-5 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
@@ -1377,31 +1379,22 @@ function selectSlot(resource, date, hour) {
         <div class="grid grid-cols-2 gap-4">
           <div>
             <p class="text-slate-500">Resource</p>
-            <p class="mt-1 font-medium text-slate-900">
-              {{ selectedBooking.resourceLabel || selectedBooking.resource }}
-            </p>
+            <select v-if="bookingEditMode && isBookingManager" v-model="selectedBooking.resource" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"><option v-for="resource in resources" :key="resource.name" :value="resource.name">{{ resource.resource_name || resource.name }}</option></select><p v-else class="mt-1 font-medium text-slate-900">{{ selectedBooking.resourceLabel || selectedBooking.resource }}</p>
           </div>
 
           <div>
             <p class="text-slate-500">Status</p>
-            <p class="mt-1 font-medium text-slate-900">
-              {{ selectedBooking.status }}
-            </p>
+            <select v-if="bookingEditMode && isBookingManager" v-model="selectedBooking.status" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"><option>Pending</option><option>Confirmed</option><option>Cancelled</option></select><p v-else class="mt-1 font-medium text-slate-900">{{ selectedBooking.status }}</p>
           </div>
 
           <div>
             <p class="text-slate-500">Date</p>
-            <p class="mt-1 font-medium text-slate-900">
-              {{ selectedBooking.date }}
-            </p>
+            <input v-if="bookingEditMode && isBookingManager" v-model="selectedBooking.date" type="date" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" /><p v-else class="mt-1 font-medium text-slate-900">{{ selectedBooking.date }}</p>
           </div>
 
           <div>
             <p class="text-slate-500">Time</p>
-            <p class="mt-1 font-medium text-slate-900">
-              {{ timeLabel(selectedBooking.start) }} –
-              {{ timeLabel(selectedBooking.end) }}
-            </p>
+            <div v-if="bookingEditMode && isBookingManager" class="mt-1 flex gap-2"><input v-model="selectedBooking.start" type="time" class="min-w-0 w-full rounded-lg border border-slate-300 p-2 text-sm" /><input v-model="selectedBooking.end" type="time" class="min-w-0 w-full rounded-lg border border-slate-300 p-2 text-sm" /></div><p v-else class="mt-1 font-medium text-slate-900">{{ timeLabel(selectedBooking.start) }} – {{ timeLabel(selectedBooking.end) }}</p>
           </div>
 
           <div class="col-span-2">
