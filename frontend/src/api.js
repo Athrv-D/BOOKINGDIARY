@@ -293,6 +293,16 @@ export async function deleteAvailability(name) {
 
 
 
+export async function getOverviewBookings() {
+  return frappeGet('booking_diary.api.get_overview_bookings')
+}
+
+export async function updateManagedBooking({ name, resource, booking_date, start_time, end_time, remarks, status }) {
+  return frappePost('booking_diary.api.update_managed_booking', {
+    booking_name: name, resource, booking_date, start_time, end_time, remarks, status,
+  })
+}
+
 export async function getBookings() {
   return frappeGet('frappe.client.get_list', {
     doctype: 'Booking Diary',
