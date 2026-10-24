@@ -384,3 +384,115 @@ def complete_past_bookings():
             completed.append(row.name)
 
     return {"completed_count": len(completed)}
+
+
+@frappe.whitelist()
+def get_overview_bookings():
+    """Return only the current user's bookings, or all bookings to managers."""
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in to view bookings.")
+
+    roles = set(frappe.get_roles(frappe.session.user))
+    is_manager = (
+        frappe.session.user == "Administrator"
+        or "System Manager" in roles
+        or "Booking Manager" in roles
+    )
+    filters = {} if is_manager else {"customer_user": frappe.session.user}
+    return frappe.get_list(
+        "Booking Diary",
+        filters=filters,
+        fields=[
+            "name", "booking_id", "resource", "booking_date",
+            "start_time", "end_time", "customer", "customer_user",
+            "status", "booking_type", "remarks", "repeat_until",
+        ],
+        order_by="booking_date asc, start_time asc",
+        page_length=500,
+    )
+
+
+@frappe.whitelist()
+def update_managed_booking(
+    booking_name,
+    resource=None,
+    booking_date=None,
+    start_time=None,
+    end_time=None,
+    remarks=None,
+    status=None,
+):
+    """Manager-only booking edits and confirmation decisions."""
+    from frappe.utils import getdate, get_time
+
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in.")
+    roles = set(frappe.get_roles(frappe.session.user))
+    if not (
+        frappe.session.user == "Administrator"
+        or "System Manager" in roles
+        or "Booking Manager" in roles
+    ):
+        frappe.throw("Only Booking Managers and administrators can edit or decide bookings.")
+
+    booking = frappe.get_doc("Booking Diary", booking_name)
+    if status is not None and status not in ("Pending", "Confirmed", "Cancelled"):
+        frappe.throw("Invalid booking status.")
+    if status is not None:
+        if status == "Confirmed" and booking.status not in ("Pending", "Confirmed"):
+            frappe.throw("Only pending bookings can be confirmed.")
+        if status == "Cancelled" and booking.status != "Pending":
+            frappe.throw("Only pending bookings can be rejected.")
+        frappe.db.set_value("Booking Diary", booking.name, "status", status, update_modified=True)
+        booking.status = status
+
+    updates = {}
+    if resource is not None and resource != booking.resource:
+        if not frappe.db.exists("Resource", resource):
+            frappe.throw("Selected resource does not exist.")
+        if not frappe.db.get_value("Resource", resource, "available"):
+            frappe.throw("Selected resource is not available.")
+        updates["resource"] = resource
+    if booking_date:
+        updates["booking_date"] = getdate(booking_date)
+    if start_time:
+        updates["start_time"] = get_time(start_time)
+    if end_time:
+        updates["end_time"] = get_time(end_time)
+    if "remarks" in frappe.form_dict:
+        updates["remarks"] = remarks or ""
+
+    final_resource = updates.get("resource", booking.resource)
+    final_date = updates.get("booking_date", booking.booking_date)
+    final_start = updates.get("start_time", booking.start_time)
+    final_end = updates.get("end_time", booking.end_time)
+    if final_start >= final_end:
+        frappe.throw("End time must be after start time.")
+
+    if updates and (final_resource != booking.resource or final_date != booking.booking_date or final_start != booking.start_time or final_end != booking.end_time):
+        conflicts = frappe.db.sql(
+            """
+            SELECT name FROM `tabBooking Diary`
+            WHERE resource = %(resource)s
+              AND booking_date = %(booking_date)s
+              AND status IN ('Pending', 'Confirmed')
+              AND name != %(name)s
+              AND start_time < %(end_time)s
+              AND end_time > %(start_time)s
+            LIMIT 1
+            """,
+            {
+                "resource": final_resource,
+                "booking_date": final_date,
+                "start_time": final_start,
+                "end_time": final_end,
+                "name": booking.name,
+            },
+        )
+        if conflicts:
+            frappe.throw("The selected resource and time overlap another active booking.")
+
+    if updates:
+        frappe.db.set_value("Booking Diary", booking.name, updates, update_modified=True)
+    frappe.db.commit()
+    return frappe.get_doc("Booking Diary", booking.name).as_dict()
