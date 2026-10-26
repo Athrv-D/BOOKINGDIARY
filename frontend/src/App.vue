@@ -23,6 +23,9 @@ import {
   getCurrentUser,
   validateGroupBooking,
   cancelBooking,
+  getOverviewBookings,
+  updateManagedBooking,
+  
 } from './api'
 
 const activeView = ref('Overview')
@@ -638,16 +641,7 @@ function offsetDate(days) {
   return dateKey(addDays(new Date(), days))
 }
 
-const demoBookings = ref([
-  { id: 'DEMO-001', title: 'Team Meeting', resource: 'Conference Room A', date: offsetDate(0), start: '09:00', end: '10:00', status: 'Confirmed', color: 'blue' },
-  { id: 'DEMO-002', title: 'Client Presentation', resource: 'Conference Room A', date: offsetDate(0), start: '11:00', end: '12:30', status: 'Confirmed', color: 'violet' },
-  { id: 'DEMO-003', title: 'Project Review', resource: 'Conference Room B', date: offsetDate(0), start: '10:00', end: '11:00', status: 'Pending', color: 'amber' },
-  { id: 'DEMO-004', title: 'Workshop', resource: 'Training Hall', date: offsetDate(1), start: '09:30', end: '12:00', status: 'Confirmed', color: 'emerald' },
-  { id: 'DEMO-005', title: 'Design Session', resource: 'Studio 1', date: offsetDate(2), start: '13:00', end: '15:00', status: 'Confirmed', color: 'violet' },
-  { id: 'DEMO-006', title: 'Planning Meeting', resource: 'Conference Room B', date: offsetDate(-1), start: '14:00', end: '15:00', status: 'Cancelled', color: 'rose' },
-  { id: 'DEMO-007', title: 'Department Sync', resource: 'Conference Room A', date: offsetDate(3), start: '10:00', end: '11:30', status: 'Pending', color: 'amber' },
-  { id: 'DEMO-008', title: 'Training Session', resource: 'Training Hall', date: offsetDate(5), start: '11:00', end: '13:00', status: 'Confirmed', color: 'emerald' },
-])
+
 
 const filteredBookings = computed(() => {
   return bookings.value.filter((booking) => {
@@ -1291,13 +1285,7 @@ function selectSlot(resource, date, hour) {
         <button
           v-for="item in navigation"
           :key="item.name"
-<<<<<<< HEAD
-          @click="activeView = item.name
-          if (item.name === 'Bookings') loadBookingsPage()
-          if (item.name === 'Overview') loadOverview()"
-=======
-          @click="activeView = item.name; if (item.name === 'Bookings') loadBookingsPage()"
->>>>>>> 671eb30ad7298f64839dcd9cecf0a08b3bb0f59c
+          @click="activeView = item.name; if (item.name === 'Bookings') loadBookingsPage(); if (item.name === 'Overview') loadOverview()"
           class="flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition"
           :class="activeView === item.name ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'"
         >
@@ -1319,7 +1307,7 @@ function selectSlot(resource, date, hour) {
       <header class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 md:px-8">
         <div>
           <div class="text-xs text-slate-400">Workspace <span class="mx-1">/</span> <span class="text-slate-600">{{ activeView }}</span></div>
-          <h1 class="mt-1 text-xl font-bold tracking-tight text-slate-900">{{ activeView }}</h1>
+          <h1 class="font-bold tracking-tight text-slate-100">{{ activeView }}</h1>
         </div>
         <button @click="openNewBooking" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700">
           <span class="text-lg leading-none">+</span> New Booking

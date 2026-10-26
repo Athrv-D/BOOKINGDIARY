@@ -60,9 +60,10 @@ body {
 
 h1,
 h2 {
-  font-family: var(--heading);
+  font-family: roboto;
   font-weight: 500;
-  color: var(--text-h);
+  color: black;
+  
 }
 
 h1 {
