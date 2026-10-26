@@ -1291,11 +1291,15 @@ function selectSlot(resource, date, hour) {
         <button
           v-for="item in navigation"
           :key="item.name"
+<<<<<<< HEAD
           @click="activeView = item.name
           if (item.name === 'Bookings') loadBookingsPage()
           if (item.name === 'Overview') loadOverview()"
+=======
+          @click="activeView = item.name; if (item.name === 'Bookings') loadBookingsPage()"
+>>>>>>> 671eb30ad7298f64839dcd9cecf0a08b3bb0f59c
           class="flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition"
-          :class="activeView === item.name ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'"
+          :class="activeView === item.name ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'"
         >
           <span class="w-5 text-center text-lg">{{ item.icon }}</span>
           {{ item.name }}
@@ -1843,6 +1847,7 @@ function selectSlot(resource, date, hour) {
             {{ availabilityResource?.resource_name || availabilityResource?.name }}
           </p>
         </div>
+        </div>
         <button
           type="button"
           @click="availabilityModalOpen = false"
@@ -2142,17 +2147,54 @@ function selectSlot(resource, date, hour) {
               </div>
               <div class="grid grid-cols-7">
                 <div v-for="day in weekDays" :key="dateKey(day)" class="min-h-[390px] border-r border-slate-100 p-2" :class="sameDay(day, new Date()) ? 'bg-indigo-50/30' : ''">
-                  <button
-                    v-for="booking in bookingsOn(day)"
-                    :key="booking.id"
-                    @click="openBooking(booking)"
-                    class="mb-2 block w-full rounded-md border-l-[3px] p-2 text-left"
-                    :class="booking.status === 'Pending' ? 'border-amber-400 bg-amber-50' : booking.color === 'violet' ? 'border-violet-400 bg-violet-50' : booking.color === 'emerald' ? 'border-emerald-400 bg-emerald-50' : 'border-blue-400 bg-blue-50'"
-                  >
-                    <span class="block text-[10px] font-bold" :class="booking.status === 'Pending' ? 'text-amber-800' : booking.color === 'violet' ? 'text-violet-800' : booking.color === 'emerald' ? 'text-emerald-800' : 'text-blue-800'">{{ booking.start }}–{{ booking.end }}</span>
-                    <span class="mt-1 block text-xs font-semibold leading-4 text-slate-800">{{ booking.title }}</span>
-                    <span class="mt-1 block text-[10px] leading-4 text-slate-500">{{ booking.resource }}</span>
-                  </button>
+
+<button
+  v-for="booking in bookingsOn(day)"
+  :key="booking.id"
+  @click="openBooking(booking)"
+  class="group mb-2 block w-full overflow-hidden rounded-lg border border-slate-200 border-l-4 p-2.5 text-left shadow-sm transition hover:border-indigo-200 hover:shadow-md"
+  :class="booking.status === 'Pending'
+    ? 'border-l-amber-400 bg-amber-50/80'
+    : booking.status === 'Cancelled'
+      ? 'border-l-rose-400 bg-rose-50/80'
+      : 'border-l-indigo-500 bg-white'"
+>
+  <div class="flex items-center justify-between gap-1">
+    <span
+      class="min-w-0 truncate text-[11px] font-bold tabular-nums"
+      :class="booking.status === 'Pending'
+        ? 'text-amber-800'
+        : booking.status === 'Cancelled'
+          ? 'text-rose-800'
+          : 'text-indigo-700'"
+    >
+      {{ timeLabel(booking.start) }}–{{ timeLabel(booking.end) }}
+    </span>
+    <span
+      class="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+      :class="booking.status === 'Pending'
+        ? 'bg-amber-100 text-amber-800'
+        : booking.status === 'Cancelled'
+          ? 'bg-rose-100 text-rose-800'
+          : 'bg-indigo-100 text-indigo-700'"
+    >
+      {{ booking.status === 'Pending' ? 'Pending' : booking.status === 'Cancelled' ? 'Cancelled' : 'Booked' }}
+    </span>
+  </div>
+
+  <p class="mt-2 truncate text-xs font-semibold text-slate-800">
+    {{ booking.title || 'Untitled booking' }}
+  </p>
+
+  <p class="mt-1 truncate text-[10px] text-slate-500">
+    {{ booking.resourceLabel || booking.resource }}
+  </p>
+
+  <p class="mt-2 text-[10px] font-medium text-indigo-600 opacity-0 transition group-hover:opacity-100">
+    View details →
+  </p>
+</button>
+
                   <p v-if="bookingsOn(day).length === 0" class="pt-3 text-center text-xs text-slate-300">No bookings</p>
                 </div>
               </div>
