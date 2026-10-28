@@ -1087,6 +1087,33 @@ const formAvailabilitySlots = computed(() => formAvailability.value.schedules.fl
   (day.slots || []).map(slot => ({ ...slot, resource: day.resource, date: day.date, is_blackout: day.is_blackout, blackout_reason: day.blackout_reason }))
 )))
 
+const selectedBookingResources = computed(() =>
+  bookingForm.value.resources
+    .map(name => resources.value.find(resource => resource.name === name))
+    .filter(Boolean)
+)
+
+const selectedCapacityModes = computed(() => [
+  ...new Set(selectedBookingResources.value.map(resource => resource.capacity_mode || 'Exclusive')),
+])
+
+const selectedResourcesAreSharedPool = computed(() =>
+  selectedBookingResources.value.length > 0 &&
+  selectedBookingResources.value.every(resource => resource.capacity_mode === 'Shared Pool')
+)
+
+function capacityModeDescription(mode) {
+  if (mode === 'Shared Pool') return 'Multiple bookings can overlap within the resource’s total capacity.'
+  if (mode === 'Per Booking') return 'Each booking has its own attendee limit; overlapping use is still restricted.'
+  return 'Only one booking can use this resource at a time.'
+}
+
+watch(selectedBookingResources, (selected) => {
+  if (!selected.length || !selected.every(resource => resource.capacity_mode === 'Shared Pool')) {
+    bookingForm.value.bookingQuantity = 1
+  }
+}, { deep: true })
+
 const bookingForm = ref({
   resources: [],
   bookingDate: dateKey(selectedDate.value),
@@ -1610,12 +1637,34 @@ function selectSlot(resource, date, hour) {
               {{ resource.resource_type || 'Resource' }}
               <span v-if="resource.available === 0 || resource.available === false"> · Unavailable</span>
             </span>
+            <span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
+              :class="(resource.capacity_mode || 'Exclusive') === 'Shared Pool' ? 'bg-emerald-100 text-emerald-800' : (resource.capacity_mode === 'Per Booking' ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700')">
+              {{ resource.capacity_mode || 'Exclusive' }}
+            </span>
           </span>
         </label>
       </div>
       <p class="mt-3 text-xs font-medium text-slate-600">
         Selected: {{ bookingForm.resources.length }} resource(s)
       </p>
+      <div v-if="selectedBookingResources.length" class="mt-3 space-y-2">
+        <div v-for="resource in selectedBookingResources" :key="'capacity-' + resource.name" class="rounded-lg border border-slate-200 bg-white p-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <p class="text-sm font-semibold text-slate-800">{{ resource.resource_name || resource.name }}</p>
+            <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
+              :class="(resource.capacity_mode || 'Exclusive') === 'Shared Pool' ? 'bg-emerald-100 text-emerald-800' : (resource.capacity_mode === 'Per Booking' ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700')">
+              {{ resource.capacity_mode || 'Exclusive' }}
+            </span>
+          </div>
+          <p class="mt-1 text-xs text-slate-600">{{ capacityModeDescription(resource.capacity_mode || 'Exclusive') }}</p>
+          <p v-if="resource.capacity_mode === 'Shared Pool'" class="mt-1 text-xs text-slate-600">
+            Total pool capacity: {{ resource.capacity || 1 }} unit(s). Remaining capacity is checked when validating the booking.
+          </p>
+          <p v-else-if="resource.capacity_mode === 'Per Booking'" class="mt-1 text-xs text-slate-600">
+            Maximum attendees per booking: {{ resource.capacity || 1 }}.
+          </p>
+        </div>
+      </div>
       <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h3 class="text-sm font-semibold text-slate-800">Availability for selected date</h3>
@@ -1715,11 +1764,15 @@ function selectSlot(resource, date, hour) {
       <input v-model.number="bookingForm.attendeeCount" type="number" min="1" required class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2" />
     </label>
 
-    <label class="block text-sm font-medium text-slate-700">
+    <label v-if="selectedResourcesAreSharedPool" class="block text-sm font-medium text-slate-700">
       Shared-pool units
-      <input v-model.number="bookingForm.bookingQuantity" type="number" min="1" required class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2" />
-      <span class="mt-1 block text-xs font-normal text-slate-500">Used for Shared Pool resources; keep at 1 otherwise.</span>
+      <input v-model.number="bookingForm.bookingQuantity" type="number" min="1" :max="Math.min(...selectedBookingResources.map(resource => Number(resource.capacity) || 1))" required class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2" />
+      <span class="mt-1 block text-xs font-normal text-slate-500">Number of units requested from the selected shared pool(s). Live validation checks current availability.</span>
     </label>
+    <div v-else class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+      Shared-pool units are not applicable to this selection. The booking quantity is kept at 1.
+      <span v-if="selectedCapacityModes.length > 1"> Mixed capacity modes are selected, so shared-pool quantity cannot be applied consistently to every resource.</span>
+    </div>
 
     <label class="block text-sm font-medium text-slate-700 md:col-span-2">
       Customer name
