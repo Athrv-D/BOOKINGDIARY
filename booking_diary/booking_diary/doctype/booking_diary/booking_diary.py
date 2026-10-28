@@ -555,7 +555,11 @@ class BookingDiary(Document):
                 "start_time",
                 "end_time",
             )
-        if is_manager and not is_admin:
+        if (
+            is_manager
+            and not is_admin
+            and not getattr(self.flags, "allow_customer_reschedule", False)
+        ):
             if previous_doc.booking_source != "Staff":
                 fields_to_check = {
                     "resource": lambda value: value,
