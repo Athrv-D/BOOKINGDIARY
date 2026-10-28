@@ -12,6 +12,18 @@ class Resource(Document):
         self.validate_booking_rules()
 
     def validate_booking_rules(self):
+        # Backfill safe defaults when validating resources created before these
+        # booking-rule fields were introduced.
+        self.capacity_mode = self.capacity_mode or "Exclusive"
+        self.capacity = self.capacity or 1
+        self.default_booking_duration = self.default_booking_duration or 30
+        if self.maximum_advance_days is None:
+            self.maximum_advance_days = 365
+        self.buffer_before_minutes = self.buffer_before_minutes or 0
+        self.buffer_after_minutes = self.buffer_after_minutes or 0
+        self.minimum_advance_hours = self.minimum_advance_hours or 0
+        self.cancellation_cutoff_hours = self.cancellation_cutoff_hours or 0
+
         if self.capacity_mode not in ("Exclusive", "Per Booking", "Shared Pool"):
             frappe.throw("Capacity Mode must be Exclusive, Per Booking, or Shared Pool.")
 
