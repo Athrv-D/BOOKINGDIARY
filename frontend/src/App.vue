@@ -1087,6 +1087,19 @@ const formAvailabilitySlots = computed(() => formAvailability.value.schedules.fl
   (day.slots || []).map(slot => ({ ...slot, resource: day.resource, date: day.date, is_blackout: day.is_blackout, blackout_reason: day.blackout_reason }))
 )))
 
+const bookingForm = ref({
+  resources: [],
+  bookingDate: dateKey(selectedDate.value),
+  startTime: '09:00:00',
+  endTime: '09:30:00',
+  bookingType: 'Single Slot',
+  repeatUntil: '',
+  customer: '',
+  remarks: '',
+  attendeeCount: 1,
+  bookingQuantity: 1,
+})
+
 const selectedBookingResources = computed(() =>
   bookingForm.value.resources
     .map(name => resources.value.find(resource => resource.name === name))
@@ -1113,19 +1126,6 @@ watch(selectedBookingResources, (selected) => {
     bookingForm.value.bookingQuantity = 1
   }
 }, { deep: true })
-
-const bookingForm = ref({
-  resources: [],
-  bookingDate: dateKey(selectedDate.value),
-  startTime: '09:00:00',
-  endTime: '09:30:00',
-  bookingType: 'Single Slot',
-  repeatUntil: '',
-  customer: '',
-  remarks: '',
-  attendeeCount: 1,
-  bookingQuantity: 1,
-})
 
 watch(
   () => [
