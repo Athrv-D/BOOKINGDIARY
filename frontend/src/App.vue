@@ -25,7 +25,7 @@ import {
   cancelBooking,
   getOverviewBookings,
   updateManagedBooking,
-  
+  rescheduleCustomerBooking,
 } from './api'
 
 const activeView = ref('Overview')
@@ -880,6 +880,54 @@ async function saveBookingChanges() {
   }
 }
 
+
+const rescheduleOpen = ref(false)
+const rescheduleSaving = ref(false)
+const rescheduleError = ref('')
+const rescheduleForm = ref({
+  resource: '',
+  bookingDate: '',
+  startTime: '',
+  endTime: '',
+})
+
+function openRescheduleForm() {
+  if (!selectedBooking.value) return
+  const booking = selectedBooking.value
+  const asTime = value => String(value || '').slice(0, 5)
+  rescheduleError.value = ''
+  rescheduleForm.value = {
+    resource: booking.resource || '',
+    bookingDate: String(booking.booking_date || booking.date || '').slice(0, 10),
+    startTime: asTime(booking.start_time || booking.start),
+    endTime: asTime(booking.end_time || booking.end),
+  }
+  rescheduleOpen.value = true
+}
+
+async function saveReschedule() {
+  if (!selectedBooking.value) return
+  rescheduleError.value = ''
+  rescheduleSaving.value = true
+  try {
+    await rescheduleCustomerBooking({
+      name: selectedBooking.value.name || selectedBooking.value.docName,
+      resource: rescheduleForm.value.resource,
+      bookingDate: rescheduleForm.value.bookingDate,
+      startTime: rescheduleForm.value.startTime.length === 5 ? `${rescheduleForm.value.startTime}:00` : rescheduleForm.value.startTime,
+      endTime: rescheduleForm.value.endTime.length === 5 ? `${rescheduleForm.value.endTime}:00` : rescheduleForm.value.endTime,
+    })
+    rescheduleOpen.value = false
+    await openBooking(selectedBooking.value)
+    await loadSchedule()
+    await loadBookingsPage()
+    await loadOverview()
+  } catch (error) {
+    rescheduleError.value = error.message || 'Could not reschedule this booking.'
+  } finally {
+    rescheduleSaving.value = false
+  }
+}
 
 const bookingCancelling = ref(false)
 const bookingCancelError = ref('')
@@ -2047,6 +2095,41 @@ function selectSlot(resource, date, hour) {
     <p><span class="font-semibold">Customer:</span> {{ selectedBooking.title }}</p>
     <p><span class="font-semibold">Status:</span> {{ selectedBooking.status }}</p>
   </div>
+
+  <div class="mt-5 flex flex-wrap gap-2">
+    <button
+      v-if="['Pending', 'Confirmed'].includes(selectedBooking.status) && (selectedBooking.customer_user === currentUser || isBookingManager)"
+      type="button"
+      @click="openRescheduleForm"
+      class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100"
+    >Reschedule booking</button>
+  </div>
+
+  <form v-if="rescheduleOpen" class="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 md:grid-cols-2" @submit.prevent="saveReschedule">
+    <label class="text-sm font-medium text-slate-700 md:col-span-2">
+      Resource
+      <select v-model="rescheduleForm.resource" required class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
+        <option v-for="resource in resources.filter(r => r.available === 1 || r.available === true)" :key="resource.name" :value="resource.name">{{ resource.resource_name || resource.name }}</option>
+      </select>
+    </label>
+    <label class="text-sm font-medium text-slate-700">
+      New date
+      <input v-model="rescheduleForm.bookingDate" type="date" required class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" />
+    </label>
+    <label class="text-sm font-medium text-slate-700">
+      Start time
+      <input v-model="rescheduleForm.startTime" type="time" required class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" />
+    </label>
+    <label class="text-sm font-medium text-slate-700">
+      End time
+      <input v-model="rescheduleForm.endTime" type="time" required class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" />
+    </label>
+    <p v-if="rescheduleError" class="rounded-lg bg-rose-50 p-3 text-sm text-rose-700 md:col-span-2">{{ rescheduleError }}</p>
+    <div class="flex justify-end gap-2 md:col-span-2">
+      <button type="button" @click="rescheduleOpen = false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Cancel</button>
+      <button type="submit" :disabled="rescheduleSaving" class="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{{ rescheduleSaving ? 'Saving…' : 'Save new time' }}</button>
+    </div>
+  </form>
 </div>
 
       <div v-if="activeView === 'Overview'" class="space-y-6 p-4 md:p-8">
