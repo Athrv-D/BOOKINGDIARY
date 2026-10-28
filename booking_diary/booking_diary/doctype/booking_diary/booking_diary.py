@@ -32,7 +32,8 @@ class BookingDiary(Document):
         self.validate_status_transition()
         self.validate_field_protection()
         self.validate_time()
-                # Only rerun scheduling validations when scheduling fields change.
+        self.validate_capacity_values()
+        # Only rerun scheduling validations when scheduling fields change.
         previous_doc = self.get_doc_before_save()
 
         scheduling_fields = (
@@ -43,6 +44,8 @@ class BookingDiary(Document):
             "booking_type",
             "repeat_until",
             "status",
+            "attendee_count",
+            "booking_quantity",
         )
 
         schedule_changed = (
@@ -160,6 +163,55 @@ class BookingDiary(Document):
         self.end_time = frappe.utils.get_time(self.end_time)
         if self.start_time >= self.end_time:
             frappe.throw("End Time must be after Start Time.")
+
+    def validate_capacity_values(self):
+        attendee_count = int(self.attendee_count or 1)
+        booking_quantity = int(self.booking_quantity or 1)
+        if attendee_count < 1:
+            frappe.throw("Attendee Count must be at least 1.")
+        if booking_quantity < 1:
+            frappe.throw("Capacity Units must be at least 1.")
+        self.attendee_count = attendee_count
+        self.booking_quantity = booking_quantity
+
+        resource = frappe.db.get_value(
+            "Resource",
+            self.resource,
+            ["capacity_mode", "capacity", "default_booking_duration"],
+            as_dict=True,
+        )
+        if not resource:
+            return
+
+        capacity_mode = resource.capacity_mode or "Exclusive"
+        capacity = int(resource.capacity or 1)
+        duration = int(resource.default_booking_duration or 30)
+        start_seconds = (
+            self.start_time.hour * 3600
+            + self.start_time.minute * 60
+            + self.start_time.second
+        )
+        end_seconds = (
+            self.end_time.hour * 3600
+            + self.end_time.minute * 60
+            + self.end_time.second
+        )
+        if end_seconds - start_seconds != duration * 60:
+            frappe.throw(
+                f"Bookings for {self.resource} must be exactly {duration} minutes long."
+            )
+        if capacity_mode == "Exclusive" and attendee_count > 1:
+            frappe.throw("This resource allows one attendee per booking.")
+        if capacity_mode == "Per Booking" and attendee_count > capacity:
+            frappe.throw(
+                f"This booking exceeds the {capacity}-person capacity of {self.resource}."
+            )
+        if capacity_mode != "Shared Pool" and booking_quantity != 1:
+            frappe.throw("Capacity Units can be greater than 1 only for Shared Pool resources.")
+        if capacity_mode == "Shared Pool" and booking_quantity > capacity:
+            frappe.throw(
+                f"Capacity Units cannot exceed the total capacity of {capacity}."
+            )
     
     def validate_recurring_range(self):
         if self.booking_type != "Recurring":
@@ -222,7 +274,15 @@ class BookingDiary(Document):
             )
 
         current_datetime = datetime.now(timezone)
-
+        resource_rules = frappe.db.get_value(
+            "Resource",
+            self.resource,
+            [
+                "minimum_advance_hours",
+                "maximum_advance_days",
+            ],
+            as_dict=True,
+        ) or {}
         booking_start = datetime.combine(
             booking_date,
             frappe.utils.get_time(self.start_time),
@@ -232,6 +292,22 @@ class BookingDiary(Document):
             frappe.throw(
                 "Cannot book a time that has already passed "
                 f"in the resource's time zone ({resource_timezone})."
+            )
+
+        minimum_hours = int(resource_rules.get("minimum_advance_hours") or 0)
+        maximum_days = int(
+            resource_rules.get("maximum_advance_days")
+            if resource_rules.get("maximum_advance_days") is not None
+            else 365
+        )
+        hours_until_booking = (booking_start - current_datetime).total_seconds() / 3600
+        if hours_until_booking < minimum_hours:
+            frappe.throw(
+                f"{self.resource} must be booked at least {minimum_hours} hours in advance."
+            )
+        if booking_start.date() > current_datetime.date() + timedelta(days=maximum_days):
+            frappe.throw(
+                f"{self.resource} can only be booked up to {maximum_days} days in advance."
             )
 
     def validate_blackout(self):
@@ -350,60 +426,71 @@ class BookingDiary(Document):
 
    
     def validate_conflict(self):
-        # Serialize booking checks for the same resource.
+        # Serialize booking checks for the same resource so concurrent requests
+        # cannot both consume the final capacity units.
         frappe.db.sql(
-            """
-            SELECT name
-            FROM `tabResource`
-            WHERE name = %s
-            FOR UPDATE
-            """,
+            "SELECT name FROM `tabResource` WHERE name = %s FOR UPDATE",
             (self.resource,),
         )
 
-        # A single booking checks its own date.
-        # A recurring request checks every date in its range.
+        resource = frappe.db.get_value(
+            "Resource",
+            self.resource,
+            [
+                "capacity_mode",
+                "capacity",
+                "buffer_before_minutes",
+                "buffer_after_minutes",
+            ],
+            as_dict=True,
+        ) or {}
+        capacity_mode = resource.get("capacity_mode") or "Exclusive"
+        capacity = int(resource.get("capacity") or 1)
+        buffer_before = int(resource.get("buffer_before_minutes") or 0)
+        buffer_after = int(resource.get("buffer_after_minutes") or 0)
+
         if self.booking_type == "Recurring":
             if not self.repeat_until:
                 frappe.throw("Repeat Until is required for a recurring booking.")
-
             start_date = frappe.utils.getdate(self.booking_date)
             end_date = frappe.utils.getdate(self.repeat_until)
-
             if end_date < start_date:
                 frappe.throw("Repeat Until cannot be before the booking start date.")
-
             dates_to_check = []
             current_date = start_date
-
             while current_date <= end_date:
                 dates_to_check.append(current_date)
                 current_date = frappe.utils.add_days(current_date, 1)
         else:
             dates_to_check = [frappe.utils.getdate(self.booking_date)]
 
-        # Check each date against existing single bookings and recurring ranges.
+        requested_start = frappe.utils.get_time(self.start_time)
+        requested_end = frappe.utils.get_time(self.end_time)
+        from datetime import datetime, timedelta as datetime_timedelta
+
+        def as_seconds(value):
+            value = frappe.utils.get_time(value)
+            return value.hour * 3600 + value.minute * 60 + value.second
+
+        proposed_start = max(0, as_seconds(requested_start) - buffer_before * 60)
+        proposed_end = min(86400, as_seconds(requested_end) + buffer_after * 60)
+
         for date_to_check in dates_to_check:
-            conflicts = frappe.db.sql(
+            rows = frappe.db.sql(
                 """
-                SELECT name
+                SELECT name, start_time, end_time, IFNULL(booking_quantity, 1) AS booking_quantity
                 FROM `tabBooking Diary`
                 WHERE resource = %s
-                AND name != %s
-                AND status NOT IN (
-                    'Cancelled', 'Draft', 'No Show', 'Completed'
-                )
-                AND (
+                  AND name != %s
+                  AND status IN ('Pending', 'Confirmed')
+                  AND (
                     booking_date = %s
                     OR (
-                        booking_type = 'Recurring'
-                        AND booking_date <= %s
-                        AND repeat_until >= %s
+                      booking_type = 'Recurring'
+                      AND booking_date <= %s
+                      AND repeat_until >= %s
                     )
-                )
-                AND start_time < %s
-                AND end_time > %s
-                LIMIT 1
+                  )
                 FOR UPDATE
                 """,
                 (
@@ -412,17 +499,30 @@ class BookingDiary(Document):
                     date_to_check,
                     date_to_check,
                     date_to_check,
-                    self.end_time,
-                    self.start_time,
                 ),
                 as_dict=True,
             )
 
-            if conflicts:
-                frappe.throw(
-                    f"This resource is already booked during the selected time "
-                    f"on {date_to_check}."
-                )
+            overlapping_units = 0
+            for row in rows:
+                other_start = max(0, as_seconds(row.start_time) - buffer_before * 60)
+                other_end = min(86400, as_seconds(row.end_time) + buffer_after * 60)
+                if proposed_start < other_end and proposed_end > other_start:
+                    if capacity_mode != "Shared Pool":
+                        frappe.throw(
+                            f"This resource is already booked during the selected time on {date_to_check}."
+                        )
+                    overlapping_units += int(row.booking_quantity or 1)
+
+            if capacity_mode == "Shared Pool":
+                requested_units = int(self.booking_quantity or 1)
+                if overlapping_units + requested_units > capacity:
+                    available_units = max(0, capacity - overlapping_units)
+                    frappe.throw(
+                        f"Only {available_units} capacity units remain for {self.resource} "
+                        f"during the selected time on {date_to_check}."
+                    )
+
     def validate_field_protection(self):
     # New documents have no previous values to protect.
         if self.is_new():
@@ -459,7 +559,11 @@ class BookingDiary(Document):
                 "start_time",
                 "end_time",
             )
-        if is_manager and not is_admin:
+        if (
+            is_manager
+            and not is_admin
+            and not getattr(self.flags, "allow_customer_reschedule", False)
+        ):
             if previous_doc.booking_source != "Staff":
                 fields_to_check = {
                     "resource": lambda value: value,
@@ -498,7 +602,11 @@ class BookingDiary(Document):
             return value
         # Customers cannot modify booking details once the booking
         # has progressed beyond Draft or Pending.
-        if not is_staff and "Booking User" in roles:
+        if (
+            not is_staff
+            and "Booking User" in roles
+            and not getattr(self.flags, "allow_customer_reschedule", False)
+        ):
             if previous_doc.status not in {"Draft", "Pending"}:
 
                 for field in protected_fields:

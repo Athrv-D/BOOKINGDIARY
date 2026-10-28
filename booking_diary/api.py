@@ -74,6 +74,8 @@ def create_group_booking(
     repeat_until=None,
     customer="",
     remarks="",
+    attendee_count=1,
+    booking_quantity=1,
 ):
     """Create one atomic booking group across multiple resources."""
     import json
@@ -144,6 +146,8 @@ def create_group_booking(
                 "booking_type": booking_type,
                 "repeat_until": repeat_until if booking_type == "Recurring" else None,
                 "customer": (customer or "").strip(),
+                "attendee_count": int(attendee_count or 1),
+                "booking_quantity": int(booking_quantity or 1),
                 "remarks": (remarks or "").strip(),
             })
             booking.insert()
@@ -174,6 +178,8 @@ def validate_group_booking(
     end_time,
     booking_type="Single Slot",
     repeat_until=None,
+    attendee_count=1,
+    booking_quantity=1,
 ):
     """Validate a proposed group booking without inserting any booking rows."""
     import json
@@ -229,6 +235,8 @@ def validate_group_booking(
                 "booking_type": booking_type,
                 "repeat_until": repeat_until if booking_type == "Recurring" else None,
                 "customer": "",
+                "attendee_count": int(attendee_count or 1),
+                "booking_quantity": int(booking_quantity or 1),
                 "customer_user": (
                     frappe.session.user
                     if "Booking User" in roles
@@ -278,7 +286,31 @@ def cancel_booking(booking_name):
     if booking.status not in ("Pending", "Confirmed"):
         frappe.throw("Only pending or confirmed bookings can be cancelled.")
 
-    # If the requested booking has already ended in its resource's timezone,
+    from datetime import datetime
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    rules = frappe.db.get_value(
+        "Resource", booking.resource,
+        ["time_zone", "cancellation_cutoff_hours"], as_dict=True,
+    ) or {}
+    timezone_name = rules.get("time_zone") or "UTC"
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        timezone = ZoneInfo("UTC")
+    booking_start = datetime.combine(
+        frappe.utils.getdate(booking.booking_date),
+        frappe.utils.get_time(booking.start_time),
+    ).replace(tzinfo=timezone)
+    cutoff_hours = int(rules.get("cancellation_cutoff_hours") or 0)
+    now_local = datetime.now(timezone)
+    if booking_start > now_local and (
+        booking_start - now_local
+    ).total_seconds() < cutoff_hours * 3600:
+        frappe.throw(
+            f"This booking must be cancelled at least {cutoff_hours} hours in advance."
+        )
+
+    # If the requested booking has already ended in the resource's timezone,
     # complete it rather than allowing a cancellation of past time.
     from datetime import datetime
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -315,6 +347,74 @@ def cancel_booking(booking_name):
         "name": booking.name,
         "booking_id": booking.booking_id,
         "status": "Cancelled",
+    }
+
+
+@frappe.whitelist()
+def reschedule_customer_booking(booking_name, resource, booking_date, start_time, end_time):
+    """Reschedule an active booking owned by the current customer."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in to reschedule a booking.")
+
+    roles = set(frappe.get_roles(frappe.session.user))
+    is_manager = (
+        frappe.session.user == "Administrator"
+        or "System Manager" in roles
+        or "Booking Manager" in roles
+    )
+    if not is_manager and "Booking User" not in roles:
+        frappe.throw("You do not have permission to reschedule bookings.")
+
+    booking = frappe.get_doc("Booking Diary", booking_name)
+    if not is_manager and booking.customer_user != frappe.session.user:
+        frappe.throw("You can reschedule only your own bookings.")
+    if booking.status not in ("Pending", "Confirmed"):
+        frappe.throw("Only pending or confirmed bookings can be rescheduled.")
+
+    rules = frappe.db.get_value(
+        "Resource", booking.resource,
+        ["time_zone", "cancellation_cutoff_hours"], as_dict=True,
+    ) or {}
+    timezone_name = rules.get("time_zone") or "UTC"
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        timezone = ZoneInfo("UTC")
+    cutoff_hours = int(rules.get("cancellation_cutoff_hours") or 0)
+    original_start = datetime.combine(
+        frappe.utils.getdate(booking.booking_date),
+        frappe.utils.get_time(booking.start_time),
+    ).replace(tzinfo=timezone)
+    if not is_manager and (
+        original_start - datetime.now(timezone)
+    ).total_seconds() < cutoff_hours * 3600:
+        frappe.throw(
+            f"This booking can only be rescheduled at least {cutoff_hours} hours in advance."
+        )
+
+    if not frappe.db.exists("Resource", resource):
+        frappe.throw("Selected resource does not exist.")
+    if not frappe.db.get_value("Resource", resource, "available"):
+        frappe.throw("Selected resource is not available.")
+
+    booking.resource = resource
+    booking.booking_date = frappe.utils.getdate(booking_date)
+    booking.start_time = frappe.utils.get_time(start_time)
+    booking.end_time = frappe.utils.get_time(end_time)
+    booking.flags.allow_customer_reschedule = True
+    booking.save()
+    frappe.db.commit()
+    return {
+        "name": booking.name,
+        "booking_id": booking.booking_id,
+        "resource": booking.resource,
+        "booking_date": str(booking.booking_date),
+        "start_time": str(booking.start_time),
+        "end_time": str(booking.end_time),
+        "status": booking.status,
     }
 
 
@@ -422,7 +522,7 @@ def update_managed_booking(
     remarks=None,
     status=None,
 ):
-    """Manager-only booking edits and confirmation decisions."""
+    """Manager-only booking edits and confirmation decisions, fully validated."""
     from frappe.utils import getdate, get_time
 
     if frappe.session.user == "Guest":
@@ -438,61 +538,34 @@ def update_managed_booking(
     booking = frappe.get_doc("Booking Diary", booking_name)
     if status is not None and status not in ("Pending", "Confirmed", "Cancelled"):
         frappe.throw("Invalid booking status.")
-    if status is not None:
-        if status == "Confirmed" and booking.status not in ("Pending", "Confirmed"):
-            frappe.throw("Only pending bookings can be confirmed.")
-        if status == "Cancelled" and booking.status != "Pending":
-            frappe.throw("Only pending bookings can be rejected.")
-        frappe.db.set_value("Booking Diary", booking.name, "status", status, update_modified=True)
-        booking.status = status
+    if status == "Confirmed" and booking.status not in ("Pending", "Confirmed"):
+        frappe.throw("Only pending bookings can be confirmed.")
+    if status == "Cancelled" and booking.status != "Pending":
+        frappe.throw("Only pending bookings can be rejected.")
 
-    updates = {}
     if resource is not None and resource != booking.resource:
         if not frappe.db.exists("Resource", resource):
             frappe.throw("Selected resource does not exist.")
         if not frappe.db.get_value("Resource", resource, "available"):
             frappe.throw("Selected resource is not available.")
-        updates["resource"] = resource
+        booking.resource = resource
     if booking_date:
-        updates["booking_date"] = getdate(booking_date)
+        booking.booking_date = getdate(booking_date)
     if start_time:
-        updates["start_time"] = get_time(start_time)
+        booking.start_time = get_time(start_time)
     if end_time:
-        updates["end_time"] = get_time(end_time)
+        booking.end_time = get_time(end_time)
     if "remarks" in frappe.form_dict:
-        updates["remarks"] = remarks or ""
+        booking.remarks = remarks or ""
+    if status is not None:
+        booking.status = status
 
-    final_resource = updates.get("resource", booking.resource)
-    final_date = updates.get("booking_date", booking.booking_date)
-    final_start = updates.get("start_time", booking.start_time)
-    final_end = updates.get("end_time", booking.end_time)
-    if final_start >= final_end:
+    if get_time(booking.start_time) >= get_time(booking.end_time):
         frappe.throw("End time must be after start time.")
 
-    if updates and (final_resource != booking.resource or final_date != booking.booking_date or final_start != booking.start_time or final_end != booking.end_time):
-        conflicts = frappe.db.sql(
-            """
-            SELECT name FROM `tabBooking Diary`
-            WHERE resource = %(resource)s
-              AND booking_date = %(booking_date)s
-              AND status IN ('Pending', 'Confirmed')
-              AND name != %(name)s
-              AND start_time < %(end_time)s
-              AND end_time > %(start_time)s
-            LIMIT 1
-            """,
-            {
-                "resource": final_resource,
-                "booking_date": final_date,
-                "start_time": final_start,
-                "end_time": final_end,
-                "name": booking.name,
-            },
-        )
-        if conflicts:
-            frappe.throw("The selected resource and time overlap another active booking.")
-
-    if updates:
-        frappe.db.set_value("Booking Diary", booking.name, updates, update_modified=True)
+    # Manager actions still run through DocType validation so duration,
+    # availability, blackouts, buffers and capacity rules cannot be bypassed.
+    booking.flags.allow_customer_reschedule = True
+    booking.save()
     frappe.db.commit()
     return frappe.get_doc("Booking Diary", booking.name).as_dict()

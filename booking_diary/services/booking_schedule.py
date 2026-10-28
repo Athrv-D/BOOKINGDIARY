@@ -143,11 +143,24 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
     blackout_filters = {
         "blackout_date": booking_date,
     }
-    resource_timezone = frappe.db.get_value(
-    "Resource",
-    resource,
-    "time_zone",
-)
+    resource_rules = frappe.db.get_value(
+        "Resource",
+        resource,
+        [
+            "time_zone",
+            "capacity_mode",
+            "capacity",
+            "buffer_before_minutes",
+            "buffer_after_minutes",
+        ],
+        as_dict=True,
+    ) or {}
+    resource_timezone = resource_rules.get("time_zone")
+    capacity_mode = resource_rules.get("capacity_mode") or "Exclusive"
+    capacity = int(resource_rules.get("capacity") or 1)
+    buffer_before = int(resource_rules.get("buffer_before_minutes") or 0)
+    buffer_after = int(resource_rules.get("buffer_after_minutes") or 0)
+    slot_duration = int(resource_rules.get("default_booking_duration") or slot_duration or DEFAULT_SLOT_DURATION)
 
     blackouts = frappe.get_all(
         "Blackout Date",
@@ -224,7 +237,8 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
             end_time,
             customer,
             customer_user,
-            status
+            status,
+            IFNULL(booking_quantity, 1) AS booking_quantity
         FROM `tabBooking Diary`
         WHERE resource = %s
         AND status NOT IN (
@@ -300,45 +314,48 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
             slot_start_time = minutes_to_time(slot_start)
             slot_end_time = minutes_to_time(slot_end)
 
-            # Check whether an existing booking overlaps this slot
-            booking = None
-
+            # Determine occupied units, including configured buffer time.
+            overlapping_bookings = []
+            occupied_units = 0
             for existing_booking in bookings:
-
-                booking_start = time_to_minutes(
-                    existing_booking.start_time
+                booking_start = max(
+                    0,
+                    time_to_minutes(existing_booking.start_time) - buffer_before,
                 )
-
-                booking_end = time_to_minutes(
-                    existing_booking.end_time
+                booking_end = min(
+                    24 * 60,
+                    time_to_minutes(existing_booking.end_time) + buffer_after,
                 )
+                if booking_start < slot_end and booking_end > slot_start:
+                    overlapping_bookings.append(existing_booking)
+                    occupied_units += int(existing_booking.booking_quantity or 1)
 
-                if (
-                    booking_start < slot_end
-                    and booking_end > slot_start
-                ):
-                    booking = existing_booking
-                    break
-
-            if booking:
+            if capacity_mode == "Shared Pool":
+                remaining_capacity = max(0, capacity - occupied_units)
+                schedule.append({
+                    "start_time": slot_start_time,
+                    "end_time": slot_end_time,
+                    "status": "available" if remaining_capacity > 0 else "booked",
+                    "remaining_capacity": remaining_capacity,
+                    "capacity": capacity,
+                })
+            elif overlapping_bookings:
+                booking = overlapping_bookings[0]
                 can_see_details = (
                     manager
                     or booking.customer_user == current_user
                 )
-
                 slot_data = {
                     "start_time": slot_start_time,
                     "end_time": slot_end_time,
                     "status": "booked",
                 }
-
                 if can_see_details:
                     slot_data.update({
                         "booking_id": booking.booking_id,
                         "booking_name": booking.name,
                         "customer": booking.customer,
                     })
-
                 schedule.append(slot_data)
             else:
                 schedule.append({

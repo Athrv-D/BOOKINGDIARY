@@ -165,6 +165,8 @@ export async function createBooking({
   repeatUntil = null,
   customer = '',
   remarks = '',
+  attendeeCount = 1,
+  bookingQuantity = 1,
 }) {
   const selectedResources = Array.isArray(resources) && resources.length
     ? resources
@@ -181,6 +183,8 @@ export async function createBooking({
     repeat_until: bookingType === 'Recurring' ? repeatUntil : null,
     customer,
     remarks,
+    attendee_count: Number(attendeeCount) || 1,
+    booking_quantity: Number(bookingQuantity) || 1,
   })
 }
 
@@ -192,6 +196,8 @@ export async function validateGroupBooking({
   endTime,
   bookingType = 'Single Slot',
   repeatUntil = null,
+  attendeeCount = 1,
+  bookingQuantity = 1,
 }) {
   return frappeGet('booking_diary.api.validate_group_booking', {
     resources: JSON.stringify(resources || []),
@@ -200,6 +206,8 @@ export async function validateGroupBooking({
     end_time: endTime,
     booking_type: bookingType,
     repeat_until: bookingType === 'Recurring' ? repeatUntil : '',
+    attendee_count: Number(attendeeCount) || 1,
+    booking_quantity: Number(bookingQuantity) || 1,
   })
 }
 
@@ -223,6 +231,14 @@ export async function createResource({
   description = '',
   available = true,
   timeZone = 'Asia/Kolkata',
+  capacityMode = 'Exclusive',
+  capacity = 1,
+  defaultBookingDuration = 30,
+  bufferBeforeMinutes = 0,
+  bufferAfterMinutes = 0,
+  minimumAdvanceHours = 0,
+  maximumAdvanceDays = 365,
+  cancellationCutoffHours = 0,
 }) {
   const doc = {
     doctype: 'Resource',
@@ -231,6 +247,14 @@ export async function createResource({
     description: description.trim(),
     available: available ? 1 : 0,
     time_zone: timeZone,
+    capacity_mode: capacityMode,
+    capacity: Number(capacity) || 1,
+    default_booking_duration: Number(defaultBookingDuration) || 30,
+    buffer_before_minutes: Number(bufferBeforeMinutes) || 0,
+    buffer_after_minutes: Number(bufferAfterMinutes) || 0,
+    minimum_advance_hours: Number(minimumAdvanceHours) || 0,
+    maximum_advance_days: Number(maximumAdvanceDays) || 365,
+    cancellation_cutoff_hours: Number(cancellationCutoffHours) || 0,
   }
 
   return frappePost('frappe.client.insert', { doc })
@@ -355,6 +379,16 @@ export async function cancelBooking(bookingName) {
   })
 }
 
+
+export async function rescheduleCustomerBooking({ name, resource, bookingDate, startTime, endTime }) {
+  return frappePost('booking_diary.api.reschedule_customer_booking', {
+    booking_name: name,
+    resource,
+    booking_date: bookingDate,
+    start_time: startTime,
+    end_time: endTime,
+  })
+}
 
 export async function getCurrentUser() {
   return frappeGet('booking_diary.api.get_current_user')
