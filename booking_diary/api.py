@@ -43,6 +43,8 @@ def get_resources():
             "resource_type",
             "available",
             "time_zone",
+            "capacity_mode",
+            "capacity",
         ],
         order_by="resource_name asc",
         page_length=500,
