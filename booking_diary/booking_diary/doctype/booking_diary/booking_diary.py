@@ -295,7 +295,11 @@ class BookingDiary(Document):
             )
 
         minimum_hours = int(resource_rules.get("minimum_advance_hours") or 0)
-        maximum_days = int(resource_rules.get("maximum_advance_days") or 365)
+        maximum_days = int(
+            resource_rules.get("maximum_advance_days")
+            if resource_rules.get("maximum_advance_days") is not None
+            else 365
+        )
         hours_until_booking = (booking_start - current_datetime).total_seconds() / 3600
         if hours_until_booking < minimum_hours:
             frappe.throw(
