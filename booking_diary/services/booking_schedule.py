@@ -160,6 +160,7 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
     capacity = int(resource_rules.get("capacity") or 1)
     buffer_before = int(resource_rules.get("buffer_before_minutes") or 0)
     buffer_after = int(resource_rules.get("buffer_after_minutes") or 0)
+    slot_duration = int(resource_rules.get("default_booking_duration") or slot_duration or DEFAULT_SLOT_DURATION)
 
     blackouts = frappe.get_all(
         "Blackout Date",
