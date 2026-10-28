@@ -247,6 +247,7 @@ async function saveResource() {
   resourceFormError.value = ''
 
   const form = resourceForm.value
+  if (form.capacity_mode === 'Exclusive') form.capacity = 1
 
   if (!form.resource_name.trim() || !form.resource_type.trim() || !form.time_zone.trim()) {
     resourceFormError.value =
