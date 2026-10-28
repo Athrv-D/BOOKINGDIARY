@@ -99,6 +99,14 @@ const resourceForm = ref({
   description: '',
   available: true,
   time_zone: 'Asia/Kolkata',
+  capacity_mode: 'Exclusive',
+  capacity: 1,
+  default_booking_duration: 30,
+  buffer_before_minutes: 0,
+  buffer_after_minutes: 0,
+  minimum_advance_hours: 0,
+  maximum_advance_days: 365,
+  cancellation_cutoff_hours: 0,
 })
 
 
@@ -203,6 +211,14 @@ function openResourceCreate() {
     description: '',
     available: true,
     time_zone: 'Asia/Kolkata',
+    capacity_mode: 'Exclusive',
+    capacity: 1,
+    default_booking_duration: 30,
+    buffer_before_minutes: 0,
+    buffer_after_minutes: 0,
+    minimum_advance_hours: 0,
+    maximum_advance_days: 365,
+    cancellation_cutoff_hours: 0,
   }
 
   resourceFormOpen.value = true
@@ -253,6 +269,14 @@ async function saveResource() {
         description: form.description,
         available: form.available,
         timeZone: form.time_zone,
+        capacityMode: form.capacity_mode,
+        capacity: form.capacity,
+        defaultBookingDuration: form.default_booking_duration,
+        bufferBeforeMinutes: form.buffer_before_minutes,
+        bufferAfterMinutes: form.buffer_after_minutes,
+        minimumAdvanceHours: form.minimum_advance_hours,
+        maximumAdvanceDays: form.maximum_advance_days,
+        cancellationCutoffHours: form.cancellation_cutoff_hours,
       })
     }
 
@@ -1023,6 +1047,8 @@ const bookingForm = ref({
   repeatUntil: '',
   customer: '',
   remarks: '',
+  attendeeCount: 1,
+  bookingQuantity: 1,
 })
 
 watch(
@@ -1030,6 +1056,8 @@ watch(
     bookingFormOpen.value,
     [...bookingForm.value.resources],
     bookingForm.value.bookingDate,
+    bookingForm.value.attendeeCount,
+    bookingForm.value.bookingQuantity,
   ],
   loadFormAvailability,
   { deep: true },
@@ -1057,6 +1085,8 @@ function openNewBooking(resource = null) {
     repeatUntil: '',
     customer: '',
     remarks: '',
+    attendeeCount: 1,
+    bookingQuantity: 1,
   }
 
   bookingFormOpen.value = true
@@ -1082,7 +1112,7 @@ watch(
     const requestId = ++liveValidationRequestId
     liveBookingValidation.value = { checking: false, valid: false, errors: [], resources: [] }
 
-    const [isOpen, selectedResources, bookingDate, startTime, endTime, bookingType, repeatUntil] = values
+    const [isOpen, selectedResources, bookingDate, attendeeCount, bookingQuantity, startTime, endTime, bookingType, repeatUntil] = values
     if (!isOpen || !selectedResources.length || !bookingDate || !startTime || !endTime) return
 
     if (startTime >= endTime) {
@@ -1115,6 +1145,8 @@ watch(
           endTime: endTime.length === 5 ? `${endTime}:00` : endTime,
           bookingType,
           repeatUntil: bookingType === 'Recurring' ? repeatUntil : null,
+          attendeeCount,
+          bookingQuantity,
         })
         if (requestId !== liveValidationRequestId) return
         liveBookingValidation.value = {
@@ -1189,6 +1221,8 @@ async function submitManualBooking() {
         : null,
       customer: form.customer.trim(),
       remarks: form.remarks.trim(),
+      attendeeCount: form.attendeeCount,
+      bookingQuantity: form.bookingQuantity,
     })
 
     bookingSuccess.value = form.resources.length > 1
@@ -1625,6 +1659,17 @@ function selectSlot(resource, date, hour) {
       />
     </label>
 
+    <label class="block text-sm font-medium text-slate-700">
+      Attendees
+      <input v-model.number="bookingForm.attendeeCount" type="number" min="1" required class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2" />
+    </label>
+
+    <label class="block text-sm font-medium text-slate-700">
+      Shared-pool units
+      <input v-model.number="bookingForm.bookingQuantity" type="number" min="1" required class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2" />
+      <span class="mt-1 block text-xs font-normal text-slate-500">Used for Shared Pool resources; keep at 1 otherwise.</span>
+    </label>
+
     <label class="block text-sm font-medium text-slate-700 md:col-span-2">
       Customer name
       <input
@@ -1762,6 +1807,50 @@ function selectSlot(resource, date, hour) {
             rows="3"
             class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
           ></textarea>
+        </label>
+
+        <label class="text-sm font-medium text-slate-700">
+          Capacity Mode *
+          <select v-model="resourceForm.capacity_mode" required class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
+            <option value="Exclusive">Exclusive (one booking at a time)</option>
+            <option value="Per Booking">People per booking</option>
+            <option value="Shared Pool">Shared pool (multiple bookings)</option>
+          </select>
+        </label>
+
+        <label class="text-sm font-medium text-slate-700">
+          {{ resourceForm.capacity_mode === 'Per Booking' ? 'Maximum people per booking' : resourceForm.capacity_mode === 'Shared Pool' ? 'Total pool capacity' : 'Capacity' }}
+          <input v-model.number="resourceForm.capacity" type="number" min="1" required :disabled="resourceForm.capacity_mode === 'Exclusive'" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 disabled:bg-slate-100" />
+        </label>
+
+        <label class="text-sm font-medium text-slate-700">
+          Booking duration (minutes) *
+          <input v-model.number="resourceForm.default_booking_duration" type="number" min="1" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+        </label>
+
+        <label class="text-sm font-medium text-slate-700">
+          Buffer before (minutes)
+          <input v-model.number="resourceForm.buffer_before_minutes" type="number" min="0" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+        </label>
+
+        <label class="text-sm font-medium text-slate-700">
+          Buffer after (minutes)
+          <input v-model.number="resourceForm.buffer_after_minutes" type="number" min="0" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+        </label>
+
+        <label class="text-sm font-medium text-slate-700">
+          Minimum advance (hours)
+          <input v-model.number="resourceForm.minimum_advance_hours" type="number" min="0" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+        </label>
+
+        <label class="text-sm font-medium text-slate-700">
+          Maximum advance (days)
+          <input v-model.number="resourceForm.maximum_advance_days" type="number" min="0" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+        </label>
+
+        <label class="text-sm font-medium text-slate-700">
+          Cancellation cutoff (hours)
+          <input v-model.number="resourceForm.cancellation_cutoff_hours" type="number" min="0" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
         </label>
 
         <label class="text-sm font-medium text-slate-700 md:col-span-2">
