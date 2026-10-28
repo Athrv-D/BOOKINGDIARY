@@ -302,7 +302,10 @@ def cancel_booking(booking_name):
         frappe.utils.get_time(booking.start_time),
     ).replace(tzinfo=timezone)
     cutoff_hours = int(rules.get("cancellation_cutoff_hours") or 0)
-    if (booking_start - datetime.now(timezone)).total_seconds() < cutoff_hours * 3600:
+    now_local = datetime.now(timezone)
+    if booking_start > now_local and (
+        booking_start - now_local
+    ).total_seconds() < cutoff_hours * 3600:
         frappe.throw(
             f"This booking must be cancelled at least {cutoff_hours} hours in advance."
         )
