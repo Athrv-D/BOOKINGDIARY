@@ -10,6 +10,14 @@
   "resource_type",
   "description",
   "available",
+  "capacity_mode",
+  "capacity",
+  "default_booking_duration",
+  "buffer_before_minutes",
+  "buffer_after_minutes",
+  "minimum_advance_hours",
+  "maximum_advance_days",
+  "cancellation_cutoff_hours",
   "time_zone"
  ],
  "fields": [
@@ -40,6 +48,60 @@
    "label": "Available"
   },
   {
+   "fieldname": "capacity_mode",
+   "fieldtype": "Select",
+   "label": "Capacity Mode",
+   "options": "Exclusive\nPer Booking\nShared Pool",
+   "default": "Exclusive",
+   "reqd": 1,
+   "description": "Exclusive allows one booking at a time. Per Booking limits people in one reservation. Shared Pool allows overlapping reservations up to total capacity."
+  },
+  {
+   "fieldname": "capacity",
+   "fieldtype": "Int",
+   "label": "Capacity",
+   "default": "1",
+   "reqd": 1,
+   "description": "Maximum people for Per Booking, or total units for Shared Pool."
+  },
+  {
+   "fieldname": "default_booking_duration",
+   "fieldtype": "Int",
+   "label": "Default Booking Duration (minutes)",
+   "default": "30",
+   "reqd": 1
+  },
+  {
+   "fieldname": "buffer_before_minutes",
+   "fieldtype": "Int",
+   "label": "Buffer Before (minutes)",
+   "default": "0"
+  },
+  {
+   "fieldname": "buffer_after_minutes",
+   "fieldtype": "Int",
+   "label": "Buffer After (minutes)",
+   "default": "0"
+  },
+  {
+   "fieldname": "minimum_advance_hours",
+   "fieldtype": "Int",
+   "label": "Minimum Advance Booking (hours)",
+   "default": "0"
+  },
+  {
+   "fieldname": "maximum_advance_days",
+   "fieldtype": "Int",
+   "label": "Maximum Advance Booking (days)",
+   "default": "365"
+  },
+  {
+   "fieldname": "cancellation_cutoff_hours",
+   "fieldtype": "Int",
+   "label": "Cancellation Cutoff (hours)",
+   "default": "0"
+  },
+  {
    "default": "Asia/Kolkata",
    "fieldname": "time_zone",
    "fieldtype": "Data",
@@ -49,7 +111,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-15 12:14:44.699332",
+ "modified": "2026-10-28 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Booking Diary",
  "name": "Resource",
