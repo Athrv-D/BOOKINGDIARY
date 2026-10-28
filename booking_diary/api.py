@@ -522,7 +522,7 @@ def update_managed_booking(
     remarks=None,
     status=None,
 ):
-    """Manager-only booking edits and confirmation decisions."""
+    """Manager-only booking edits and confirmation decisions, fully validated."""
     from frappe.utils import getdate, get_time
 
     if frappe.session.user == "Guest":
@@ -538,61 +538,34 @@ def update_managed_booking(
     booking = frappe.get_doc("Booking Diary", booking_name)
     if status is not None and status not in ("Pending", "Confirmed", "Cancelled"):
         frappe.throw("Invalid booking status.")
-    if status is not None:
-        if status == "Confirmed" and booking.status not in ("Pending", "Confirmed"):
-            frappe.throw("Only pending bookings can be confirmed.")
-        if status == "Cancelled" and booking.status != "Pending":
-            frappe.throw("Only pending bookings can be rejected.")
-        frappe.db.set_value("Booking Diary", booking.name, "status", status, update_modified=True)
-        booking.status = status
+    if status == "Confirmed" and booking.status not in ("Pending", "Confirmed"):
+        frappe.throw("Only pending bookings can be confirmed.")
+    if status == "Cancelled" and booking.status != "Pending":
+        frappe.throw("Only pending bookings can be rejected.")
 
-    updates = {}
     if resource is not None and resource != booking.resource:
         if not frappe.db.exists("Resource", resource):
             frappe.throw("Selected resource does not exist.")
         if not frappe.db.get_value("Resource", resource, "available"):
             frappe.throw("Selected resource is not available.")
-        updates["resource"] = resource
+        booking.resource = resource
     if booking_date:
-        updates["booking_date"] = getdate(booking_date)
+        booking.booking_date = getdate(booking_date)
     if start_time:
-        updates["start_time"] = get_time(start_time)
+        booking.start_time = get_time(start_time)
     if end_time:
-        updates["end_time"] = get_time(end_time)
+        booking.end_time = get_time(end_time)
     if "remarks" in frappe.form_dict:
-        updates["remarks"] = remarks or ""
+        booking.remarks = remarks or ""
+    if status is not None:
+        booking.status = status
 
-    final_resource = updates.get("resource", booking.resource)
-    final_date = updates.get("booking_date", booking.booking_date)
-    final_start = updates.get("start_time", booking.start_time)
-    final_end = updates.get("end_time", booking.end_time)
-    if final_start >= final_end:
+    if get_time(booking.start_time) >= get_time(booking.end_time):
         frappe.throw("End time must be after start time.")
 
-    if updates and (final_resource != booking.resource or final_date != booking.booking_date or final_start != booking.start_time or final_end != booking.end_time):
-        conflicts = frappe.db.sql(
-            """
-            SELECT name FROM `tabBooking Diary`
-            WHERE resource = %(resource)s
-              AND booking_date = %(booking_date)s
-              AND status IN ('Pending', 'Confirmed')
-              AND name != %(name)s
-              AND start_time < %(end_time)s
-              AND end_time > %(start_time)s
-            LIMIT 1
-            """,
-            {
-                "resource": final_resource,
-                "booking_date": final_date,
-                "start_time": final_start,
-                "end_time": final_end,
-                "name": booking.name,
-            },
-        )
-        if conflicts:
-            frappe.throw("The selected resource and time overlap another active booking.")
-
-    if updates:
-        frappe.db.set_value("Booking Diary", booking.name, updates, update_modified=True)
+    # Manager actions still run through DocType validation so duration,
+    # availability, blackouts, buffers and capacity rules cannot be bypassed.
+    booking.flags.allow_customer_reschedule = True
+    booking.save()
     frappe.db.commit()
     return frappe.get_doc("Booking Diary", booking.name).as_dict()
