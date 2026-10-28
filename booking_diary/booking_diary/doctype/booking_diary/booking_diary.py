@@ -594,7 +594,11 @@ class BookingDiary(Document):
             return value
         # Customers cannot modify booking details once the booking
         # has progressed beyond Draft or Pending.
-        if not is_staff and "Booking User" in roles:
+        if (
+            not is_staff
+            and "Booking User" in roles
+            and not getattr(self.flags, "allow_customer_reschedule", False)
+        ):
             if previous_doc.status not in {"Draft", "Pending"}:
 
                 for field in protected_fields:
