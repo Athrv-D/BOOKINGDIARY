@@ -23,7 +23,6 @@ def get_my_bookings():
             "start_time",
             "end_time",
             "status",
-            "payment_status",
         ],
         order_by="booking_date desc, start_time desc",
     )
