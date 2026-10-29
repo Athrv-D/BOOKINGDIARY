@@ -140,19 +140,9 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
     """
 
     day_name = frappe.utils.getdate(booking_date).strftime("%A")
-    blackout_filters = {
-        "blackout_date": booking_date,
-    }
     resource_rules = frappe.db.get_value(
-        "Resource",
-        resource,
-        [
-            "time_zone",
-            "capacity_mode",
-            "capacity",
-            "buffer_before_minutes",
-            "buffer_after_minutes",
-        ],
+        "Resource", resource,
+        ["time_zone", "capacity_mode", "capacity", "buffer_before_minutes", "buffer_after_minutes"],
         as_dict=True,
     ) or {}
     resource_timezone = resource_rules.get("time_zone")
@@ -164,34 +154,28 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
 
     blackouts = frappe.get_all(
         "Blackout Date",
-        filters=blackout_filters,
-        fields=[
-            "resource",
-            "reason",
-            "applies_globally",
-        ],
+        filters={"blackout_date": ["<=", booking_date]},
+        fields=["resource", "reason", "applies_globally", "blackout_date",
+                "blackout_end_date", "start_time", "end_time"],
+        limit_page_length=1000,
     )
+    applicable_blackouts = []
+    for blackout in blackouts:
+        start_date = frappe.utils.getdate(blackout.blackout_date)
+        end_date = frappe.utils.getdate(blackout.blackout_end_date or blackout.blackout_date)
+        if start_date <= frappe.utils.getdate(booking_date) <= end_date:
+            if blackout.applies_globally or blackout.resource == resource:
+                applicable_blackouts.append(blackout)
 
-    applicable_blackout = next(
-        (
-            blackout
-            for blackout in blackouts
-            if blackout.applies_globally
-            or blackout.resource == resource
-        ),
+    all_day_blackout = next(
+        (item for item in applicable_blackouts if not item.start_time and not item.end_time),
         None,
     )
-
-    if applicable_blackout:
+    if all_day_blackout:
         return {
-            "resource": resource,
-            "date": str(booking_date),
-            "day": day_name,
-            "slots": [],
-            "bookings": [],
-            "is_blackout": True,
-            "blackout_reason": applicable_blackout.reason,
-            "time_zone":resource_timezone
+            "resource": resource, "date": str(booking_date), "day": day_name,
+            "slots": [], "bookings": [], "is_blackout": True,
+            "blackout_reason": all_day_blackout.reason, "time_zone": resource_timezone,
         }
 
     # Get all availability periods for this resource/day
@@ -365,6 +349,24 @@ def get_resource_schedule(resource, booking_date, slot_duration=DEFAULT_SLOT_DUR
                 })
 
             current += slot_duration
+    # Mark slots overlapping a partial-day blackout as unavailable.
+    def blackout_minutes(value):
+        value = frappe.utils.get_time(value)
+        return value.hour * 60 + value.minute + value.second / 60
+
+    for slot in schedule:
+        slot_start = time_to_minutes(slot["start_time"])
+        slot_end = time_to_minutes(slot["end_time"])
+        for blackout in applicable_blackouts:
+            if not blackout.start_time or not blackout.end_time:
+                continue
+            blackout_start = blackout_minutes(blackout.start_time)
+            blackout_end = blackout_minutes(blackout.end_time)
+            if slot_start < blackout_end and slot_end > blackout_start:
+                slot["status"] = "unavailable"
+                slot["blackout_reason"] = blackout.reason or "Blackout period"
+                break
+
     add_user_display_times(
     schedule,
     booking_date,
