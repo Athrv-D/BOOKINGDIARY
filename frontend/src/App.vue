@@ -50,17 +50,6 @@ const reportActiveCount = computed(() => reportRecords.value.filter(row => ['Pen
 const reportConfirmedCount = computed(() => reportRecords.value.filter(row => row.status === 'Confirmed').length)
 const reportPendingCount = computed(() => reportRecords.value.filter(row => row.status === 'Pending').length)
 const reportCancelledCount = computed(() => reportRecords.value.filter(row => row.status === 'Cancelled').length)
-const reportEstimatedValue = computed(() => reportRecords.value.reduce((sum, row) => {
-  if (row.status === 'Cancelled') return sum
-  const start = String(row.start_time || '00:00').split(':').map(Number)
-  const end = String(row.end_time || '00:00').split(':').map(Number)
-  let minutes = (end[0] * 60 + end[1]) - (start[0] * 60 + start[1])
-  if (minutes < 0) minutes += 24 * 60
-  const amount = row.pricing_model === 'Hourly'
-    ? (Number(row.hourly_rate) || 0) * minutes / 60
-    : (Number(row.fixed_price) || 0)
-  return sum + amount
-}, 0))
 const reportByResource = computed(() => {
   const grouped = new Map()
   for (const row of reportRecords.value) {
@@ -98,8 +87,7 @@ function exportBookingReport() {
   const columns = [
     ['Booking ID', 'booking_id'], ['Customer', 'customer'], ['Resource', 'resource_name'],
     ['Category', 'resource_category'], ['Date', 'booking_date'], ['Start', 'start_time'],
-    ['End', 'end_time'], ['Status', 'status'], ['Payment Status', 'payment_status'],
-    ['Pricing Model', 'pricing_model'], ['Fixed Price', 'fixed_price'], ['Hourly Rate', 'hourly_rate'],
+    ['End', 'end_time'], ['Status', 'status'],
   ]
   const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`
   const csv = [columns.map(([label]) => quote(label)).join(','), ...reportRecords.value.map(row => columns.map(([, key]) => quote(row[key])).join(','))].join('\r\n')
@@ -178,9 +166,6 @@ const resourceForm = ref({
   time_zone: 'Asia/Kolkata',
   capacity_mode: 'Exclusive',
   capacity: 1,
-  pricing_model: 'Fixed',
-  fixed_price: 0,
-  hourly_rate: 0,
   default_booking_duration: 30,
   buffer_before_minutes: 0,
   buffer_after_minutes: 0,
@@ -297,9 +282,6 @@ function openResourceCreate() {
     time_zone: 'Asia/Kolkata',
     capacity_mode: 'Exclusive',
     capacity: 1,
-    pricing_model: 'Fixed',
-    fixed_price: 0,
-    hourly_rate: 0,
     default_booking_duration: 30,
     buffer_before_minutes: 0,
     buffer_after_minutes: 0,
@@ -321,9 +303,6 @@ async function openResourceEdit(resource) {
     resourceForm.value = {
       ...doc,
       resource_category: doc.resource_category || 'Other',
-      pricing_model: doc.pricing_model || 'Fixed',
-      fixed_price: Number(doc.fixed_price) || 0,
-      hourly_rate: Number(doc.hourly_rate) || 0,
       available: Boolean(doc.available),
     }
 
@@ -364,9 +343,6 @@ async function saveResource() {
         timeZone: form.time_zone,
         capacityMode: form.capacity_mode,
         capacity: form.capacity,
-        pricingModel: form.pricing_model,
-        fixedPrice: form.fixed_price,
-        hourlyRate: form.hourly_rate,
         defaultBookingDuration: form.default_booking_duration,
         bufferBeforeMinutes: form.buffer_before_minutes,
         bufferAfterMinutes: form.buffer_after_minutes,
@@ -1246,20 +1222,6 @@ const bookingDurationHours = computed(() => {
   return Math.max(0, ((endHour * 60 + endMinute) - (startHour * 60 + startMinute)) / 60)
 })
 
-const estimatedBookingPrice = computed(() => selectedBookingResources.value.reduce((total, resource) => {
-  const fixedPrice = Number(resource.fixed_price) || 0
-  const hourlyRate = Number(resource.hourly_rate) || 0
-  const resourcePrice = resource.pricing_model === 'Hourly'
-    ? hourlyRate * bookingDurationHours.value
-    : fixedPrice
-  const quantity = resource.capacity_mode === 'Shared Pool' ? Math.max(1, Number(bookingForm.value.bookingQuantity) || 1) : 1
-  return total + resourcePrice * quantity
-}, 0))
-
-function formatCurrency(value) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(value) || 0)
-}
-
 const selectedCapacityModes = computed(() => [
   ...new Set(selectedBookingResources.value.map(resource => resource.capacity_mode || 'Exclusive')),
 ])
@@ -1804,8 +1766,6 @@ function selectSlot(resource, date, hour) {
             </span>
             <span class="block text-xs text-slate-500">
               {{ resource.resource_category || 'Other' }} · {{ resource.resource_type || 'Resource' }}
-              <span v-if="resource.pricing_model === 'Hourly'"> · {{ formatCurrency(resource.hourly_rate) }}/hour</span>
-              <span v-else> · {{ formatCurrency(resource.fixed_price) }} fixed</span>
               <span v-if="resource.available === 0 || resource.available === false"> · Unavailable</span>
             </span>
             <span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
@@ -1905,11 +1865,7 @@ function selectSlot(resource, date, hour) {
       />
     </label>
 
-    <div v-if="selectedBookingResources.length" class="rounded-xl border border-indigo-200 bg-indigo-50 p-4 md:col-span-2">
-      <p class="text-sm font-semibold text-indigo-950">Estimated resource total</p>
-      <p class="mt-1 text-2xl font-bold text-indigo-900">{{ formatCurrency(estimatedBookingPrice) }}</p>
-      <p class="mt-1 text-xs text-indigo-800">Based on selected resources and booking duration. Hourly resources are prorated; shared-pool pricing is multiplied by requested units. Final billing is not yet captured by this estimate.</p>
-    </div>
+    
 
     <label class="block text-sm font-medium text-slate-700">
       Booking type *
@@ -2119,25 +2075,7 @@ function selectSlot(resource, date, hour) {
           </select>
         </label>
 
-        <label class="text-sm font-medium text-slate-700">
-          Pricing model *
-          <select v-model="resourceForm.pricing_model" required class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
-            <option value="Fixed">Fixed price per booking</option>
-            <option value="Hourly">Hourly rate</option>
-          </select>
-        </label>
-
-        <label v-if="resourceForm.pricing_model === 'Fixed'" class="text-sm font-medium text-slate-700">
-          Fixed price (INR)
-          <input v-model.number="resourceForm.fixed_price" type="number" min="0" step="0.01" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
-        </label>
-
-        <label v-else class="text-sm font-medium text-slate-700">
-          Hourly rate (INR)
-          <input v-model.number="resourceForm.hourly_rate" type="number" min="0" step="0.01" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
-        </label>
-
-        <label class="text-sm font-medium text-slate-700 md:col-span-2">
+<label class="text-sm font-medium text-slate-700 md:col-span-2">
           Description
           <textarea
             v-model="resourceForm.description"
@@ -2811,7 +2749,6 @@ function selectSlot(resource, date, hour) {
           <tr class="border-b border-slate-200 text-slate-500">
             <th class="px-3 py-3 font-medium">Resource Name</th>
             <th class="px-3 py-3 font-medium">Category / Type</th>
-            <th class="px-3 py-3 font-medium">Price</th>
             <th class="px-3 py-3 font-medium">Availability</th>
             <th class="px-3 py-3 font-medium">Time Zone</th>
             <th class="px-3 py-3 font-medium">Quick Check</th>
@@ -2831,11 +2768,7 @@ function selectSlot(resource, date, hour) {
               <span class="block font-medium">{{ resource.resource_category || 'Other' }}</span>
               <span class="block text-xs text-slate-500">{{ resource.resource_type || '—' }}</span>
             </td>
-            <td class="px-3 py-3">
-              <span v-if="resource.pricing_model === 'Hourly'">{{ formatCurrency(resource.hourly_rate) }}/hour</span>
-              <span v-else>{{ formatCurrency(resource.fixed_price) }} fixed</span>
-            </td>
-            <td class="px-3 py-3">
+<td class="px-3 py-3">
               {{ resource.available ? 'Available' : 'Unavailable' }}
             </td>
             <td class="px-3 py-3">{{ resource.time_zone || '—' }}</td>
@@ -3019,7 +2952,7 @@ function selectSlot(resource, date, hour) {
       <label class="text-sm font-medium text-slate-700">To date<input v-model="reportEndDate" type="date" required :min="reportStartDate" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5" /></label>
       <button type="submit" :disabled="reportLoading" class="self-end rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{{ reportLoading ? 'Loading…' : 'Run report' }}</button>
     </form>
-    <p class="mt-3 text-xs text-slate-500">Maximum range: 367 calendar days. Estimated value uses current resource prices and excludes cancelled bookings; it is not a stored invoice total. Results are capped at 5,000 bookings.</p>
+    <p class="mt-3 text-xs text-slate-500">Maximum range: 367 calendar days. Results are capped at 5,000 bookings.</p>
     <p v-if="reportError" class="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{{ reportError }}</p>
   </section>
   <div v-if="reportLoading" class="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">Loading report data…</div>
@@ -3029,7 +2962,6 @@ function selectSlot(resource, date, hour) {
       <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Confirmed</p><p class="mt-2 text-3xl font-bold text-emerald-700">{{ reportConfirmedCount }}</p></div>
       <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Pending</p><p class="mt-2 text-3xl font-bold text-amber-700">{{ reportPendingCount }}</p></div>
       <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Cancelled</p><p class="mt-2 text-3xl font-bold text-rose-700">{{ reportCancelledCount }}</p></div>
-      <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Estimated value</p><p class="mt-2 text-2xl font-bold text-indigo-700">{{ formatCurrency(reportEstimatedValue) }}</p></div>
     </div>
     <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div class="border-b border-slate-100 p-5"><h3 class="font-bold text-slate-900">Bookings by resource</h3><p class="mt-1 text-xs text-slate-500">Includes cancelled bookings in volume counts.</p></div>
@@ -3037,9 +2969,9 @@ function selectSlot(resource, date, hour) {
       <div v-else class="overflow-x-auto"><table class="w-full min-w-[600px] text-left text-sm"><thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th class="px-4 py-3">Resource</th><th class="px-4 py-3">Total</th><th class="px-4 py-3">Confirmed</th><th class="px-4 py-3">Pending</th><th class="px-4 py-3">Cancelled</th></tr></thead><tbody><tr v-for="item in reportByResource" :key="item.name" class="border-t border-slate-100"><td class="px-4 py-3 font-medium text-slate-800">{{ item.name }}</td><td class="px-4 py-3">{{ item.count }}</td><td class="px-4 py-3">{{ item.confirmed }}</td><td class="px-4 py-3">{{ item.pending }}</td><td class="px-4 py-3">{{ item.cancelled }}</td></tr></tbody></table></div>
     </section>
     <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div class="border-b border-slate-100 p-5"><h3 class="font-bold text-slate-900">Booking detail</h3><p class="mt-1 text-xs text-slate-500">Current resource pricing is used only for indicative estimates.</p></div>
+      <div class="border-b border-slate-100 p-5"><h3 class="font-bold text-slate-900">Booking detail</h3></div>
       <div v-if="!reportRecords.length" class="p-8 text-center text-sm text-slate-500">No booking records found.</div>
-      <div v-else class="overflow-x-auto"><table class="w-full min-w-[850px] text-left text-sm"><thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th class="px-4 py-3">Booking ID</th><th class="px-4 py-3">Customer</th><th class="px-4 py-3">Resource</th><th class="px-4 py-3">Date</th><th class="px-4 py-3">Time</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Payment</th></tr></thead><tbody><tr v-for="row in reportRecords" :key="row.name" class="border-t border-slate-100"><td class="px-4 py-3 font-semibold">{{ row.booking_id || row.name }}</td><td class="px-4 py-3">{{ row.customer || '—' }}</td><td class="px-4 py-3">{{ row.resource_name || row.resource }}</td><td class="px-4 py-3">{{ row.booking_date }}</td><td class="px-4 py-3">{{ row.start_time }}–{{ row.end_time }}</td><td class="px-4 py-3">{{ row.status }}</td><td class="px-4 py-3">{{ row.payment_status || 'Pending' }}</td></tr></tbody></table></div>
+      <div v-else class="overflow-x-auto"><table class="w-full min-w-[850px] text-left text-sm"><thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th class="px-4 py-3">Booking ID</th><th class="px-4 py-3">Customer</th><th class="px-4 py-3">Resource</th><th class="px-4 py-3">Date</th><th class="px-4 py-3">Time</th><th class="px-4 py-3">Status</th></tr></thead><tbody><tr v-for="row in reportRecords" :key="row.name" class="border-t border-slate-100"><td class="px-4 py-3 font-semibold">{{ row.booking_id || row.name }}</td><td class="px-4 py-3">{{ row.customer || '—' }}</td><td class="px-4 py-3">{{ row.resource_name || row.resource }}</td><td class="px-4 py-3">{{ row.booking_date }}</td><td class="px-4 py-3">{{ row.start_time }}–{{ row.end_time }}</td><td class="px-4 py-3">{{ row.status }}</td></tr></tbody></table></div>
     </section>
   </template>
 </div>

@@ -24,7 +24,6 @@
   "repeat_until",
   "booking_series_id",
   "booking_source",
-  "payment_status",
   "remarks"
  ],
  "fields": [
@@ -125,12 +124,6 @@
    "label": "Status",
    "options": "Draft\nPending\nConfirmed\nCancelled\nCompleted\nNo Show",
    "reqd": 1
-  },
-  {
-   "fieldname": "payment_status",
-   "fieldtype": "Select",
-   "label": "Payment Status",
-   "options": "Pending\nPaid\nFailed\nRefunded"
   },
   {
    "fieldname": "remarks",
