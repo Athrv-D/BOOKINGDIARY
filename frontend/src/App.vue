@@ -96,11 +96,15 @@ const resourceForm = ref({
   name: '',
   resource_name: '',
   resource_type: '',
+  resource_category: 'Venue',
   description: '',
   available: true,
   time_zone: 'Asia/Kolkata',
   capacity_mode: 'Exclusive',
   capacity: 1,
+  pricing_model: 'Fixed',
+  fixed_price: 0,
+  hourly_rate: 0,
   default_booking_duration: 30,
   buffer_before_minutes: 0,
   buffer_after_minutes: 0,
@@ -208,11 +212,15 @@ function openResourceCreate() {
     name: '',
     resource_name: '',
     resource_type: '',
+    resource_category: 'Venue',
     description: '',
     available: true,
     time_zone: 'Asia/Kolkata',
     capacity_mode: 'Exclusive',
     capacity: 1,
+    pricing_model: 'Fixed',
+    fixed_price: 0,
+    hourly_rate: 0,
     default_booking_duration: 30,
     buffer_before_minutes: 0,
     buffer_after_minutes: 0,
@@ -233,6 +241,10 @@ async function openResourceEdit(resource) {
 
     resourceForm.value = {
       ...doc,
+      resource_category: doc.resource_category || 'Other',
+      pricing_model: doc.pricing_model || 'Fixed',
+      fixed_price: Number(doc.fixed_price) || 0,
+      hourly_rate: Number(doc.hourly_rate) || 0,
       available: Boolean(doc.available),
     }
 
@@ -267,11 +279,15 @@ async function saveResource() {
       await createResource({
         resourceName: form.resource_name,
         resourceType: form.resource_type,
+        resourceCategory: form.resource_category,
         description: form.description,
         available: form.available,
         timeZone: form.time_zone,
         capacityMode: form.capacity_mode,
         capacity: form.capacity,
+        pricingModel: form.pricing_model,
+        fixedPrice: form.fixed_price,
+        hourlyRate: form.hourly_rate,
         defaultBookingDuration: form.default_booking_duration,
         bufferBeforeMinutes: form.buffer_before_minutes,
         bufferAfterMinutes: form.buffer_after_minutes,
@@ -1087,11 +1103,51 @@ const formAvailabilitySlots = computed(() => formAvailability.value.schedules.fl
   (day.slots || []).map(slot => ({ ...slot, resource: day.resource, date: day.date, is_blackout: day.is_blackout, blackout_reason: day.blackout_reason }))
 )))
 
+const bookingForm = ref({
+  resources: [],
+  bookingDate: dateKey(selectedDate.value),
+  startTime: '09:00:00',
+  endTime: '09:30:00',
+  bookingType: 'Single Slot',
+  repeatUntil: '',
+  customer: '',
+  remarks: '',
+  attendeeCount: 1,
+  bookingQuantity: 1,
+})
+
+const bookingResourceCategories = ['Venue', 'Staff', 'Equipment', 'Facility', 'Other']
+const bookingResourceCategoryFilter = ref('All categories')
+const filteredBookingResources = computed(() => resources.value.filter(resource =>
+  bookingResourceCategoryFilter.value === 'All categories' ||
+  (resource.resource_category || 'Other') === bookingResourceCategoryFilter.value
+))
+
 const selectedBookingResources = computed(() =>
   bookingForm.value.resources
     .map(name => resources.value.find(resource => resource.name === name))
     .filter(Boolean)
 )
+
+const bookingDurationHours = computed(() => {
+  const [startHour, startMinute] = String(bookingForm.value.startTime || '0:0').split(':').map(Number)
+  const [endHour, endMinute] = String(bookingForm.value.endTime || '0:0').split(':').map(Number)
+  return Math.max(0, ((endHour * 60 + endMinute) - (startHour * 60 + startMinute)) / 60)
+})
+
+const estimatedBookingPrice = computed(() => selectedBookingResources.value.reduce((total, resource) => {
+  const fixedPrice = Number(resource.fixed_price) || 0
+  const hourlyRate = Number(resource.hourly_rate) || 0
+  const resourcePrice = resource.pricing_model === 'Hourly'
+    ? hourlyRate * bookingDurationHours.value
+    : fixedPrice
+  const quantity = resource.capacity_mode === 'Shared Pool' ? Math.max(1, Number(bookingForm.value.bookingQuantity) || 1) : 1
+  return total + resourcePrice * quantity
+}, 0))
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(value) || 0)
+}
 
 const selectedCapacityModes = computed(() => [
   ...new Set(selectedBookingResources.value.map(resource => resource.capacity_mode || 'Exclusive')),
@@ -1113,19 +1169,6 @@ watch(selectedBookingResources, (selected) => {
     bookingForm.value.bookingQuantity = 1
   }
 }, { deep: true })
-
-const bookingForm = ref({
-  resources: [],
-  bookingDate: dateKey(selectedDate.value),
-  startTime: '09:00:00',
-  endTime: '09:30:00',
-  bookingType: 'Single Slot',
-  repeatUntil: '',
-  customer: '',
-  remarks: '',
-  attendeeCount: 1,
-  bookingQuantity: 1,
-})
 
 watch(
   () => [
@@ -1615,9 +1658,16 @@ function selectSlot(resource, date, hour) {
       <p class="mb-3 text-xs text-slate-500">
         Select one or more resources. All will be booked for the same date and time.
       </p>
+      <label class="mb-3 block text-sm font-medium text-slate-700">
+        Filter by category
+        <select v-model="bookingResourceCategoryFilter" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 sm:max-w-xs">
+          <option>All categories</option>
+          <option v-for="category in bookingResourceCategories" :key="category" :value="category">{{ category }}</option>
+        </select>
+      </label>
       <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label
-          v-for="resource in resources"
+          v-for="resource in filteredBookingResources"
           :key="resource.name"
           class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5 text-sm hover:bg-slate-50"
           :class="bookingForm.resources.includes(resource.name) ? 'border-indigo-300 bg-indigo-50' : 'bg-white'"
@@ -1634,7 +1684,9 @@ function selectSlot(resource, date, hour) {
               {{ resource.resource_name || resource.name }}
             </span>
             <span class="block text-xs text-slate-500">
-              {{ resource.resource_type || 'Resource' }}
+              {{ resource.resource_category || 'Other' }} · {{ resource.resource_type || 'Resource' }}
+              <span v-if="resource.pricing_model === 'Hourly'"> · {{ formatCurrency(resource.hourly_rate) }}/hour</span>
+              <span v-else> · {{ formatCurrency(resource.fixed_price) }} fixed</span>
               <span v-if="resource.available === 0 || resource.available === false"> · Unavailable</span>
             </span>
             <span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
@@ -1733,6 +1785,12 @@ function selectSlot(resource, date, hour) {
         class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"
       />
     </label>
+
+    <div v-if="selectedBookingResources.length" class="rounded-xl border border-indigo-200 bg-indigo-50 p-4 md:col-span-2">
+      <p class="text-sm font-semibold text-indigo-950">Estimated resource total</p>
+      <p class="mt-1 text-2xl font-bold text-indigo-900">{{ formatCurrency(estimatedBookingPrice) }}</p>
+      <p class="mt-1 text-xs text-indigo-800">Based on selected resources and booking duration. Hourly resources are prorated; shared-pool pricing is multiplied by requested units. Final billing is not yet captured by this estimate.</p>
+    </div>
 
     <label class="block text-sm font-medium text-slate-700">
       Booking type *
@@ -1900,8 +1958,38 @@ function selectSlot(resource, date, hour) {
             v-model="resourceForm.resource_type"
             required
             maxlength="140"
+            placeholder="e.g. Outdoor garden, MC, chef, DJ, face painter"
             class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
           />
+        </label>
+
+        <label class="text-sm font-medium text-slate-700">
+          Category *
+          <select v-model="resourceForm.resource_category" required class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
+            <option>Venue</option>
+            <option>Staff</option>
+            <option>Equipment</option>
+            <option>Facility</option>
+            <option>Other</option>
+          </select>
+        </label>
+
+        <label class="text-sm font-medium text-slate-700">
+          Pricing model *
+          <select v-model="resourceForm.pricing_model" required class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
+            <option value="Fixed">Fixed price per booking</option>
+            <option value="Hourly">Hourly rate</option>
+          </select>
+        </label>
+
+        <label v-if="resourceForm.pricing_model === 'Fixed'" class="text-sm font-medium text-slate-700">
+          Fixed price (INR)
+          <input v-model.number="resourceForm.fixed_price" type="number" min="0" step="0.01" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+        </label>
+
+        <label v-else class="text-sm font-medium text-slate-700">
+          Hourly rate (INR)
+          <input v-model.number="resourceForm.hourly_rate" type="number" min="0" step="0.01" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
         </label>
 
         <label class="text-sm font-medium text-slate-700 md:col-span-2">
@@ -2577,7 +2665,8 @@ function selectSlot(resource, date, hour) {
         <thead>
           <tr class="border-b border-slate-200 text-slate-500">
             <th class="px-3 py-3 font-medium">Resource Name</th>
-            <th class="px-3 py-3 font-medium">Type</th>
+            <th class="px-3 py-3 font-medium">Category / Type</th>
+            <th class="px-3 py-3 font-medium">Price</th>
             <th class="px-3 py-3 font-medium">Availability</th>
             <th class="px-3 py-3 font-medium">Time Zone</th>
             <th class="px-3 py-3 font-medium">Quick Check</th>
@@ -2593,7 +2682,14 @@ function selectSlot(resource, date, hour) {
             <td class="px-3 py-3 font-medium text-slate-900">
               {{ resource.resource_name || resource.name }}
             </td>
-            <td class="px-3 py-3">{{ resource.resource_type || '—' }}</td>
+            <td class="px-3 py-3">
+              <span class="block font-medium">{{ resource.resource_category || 'Other' }}</span>
+              <span class="block text-xs text-slate-500">{{ resource.resource_type || '—' }}</span>
+            </td>
+            <td class="px-3 py-3">
+              <span v-if="resource.pricing_model === 'Hourly'">{{ formatCurrency(resource.hourly_rate) }}/hour</span>
+              <span v-else>{{ formatCurrency(resource.fixed_price) }} fixed</span>
+            </td>
             <td class="px-3 py-3">
               {{ resource.available ? 'Available' : 'Unavailable' }}
             </td>

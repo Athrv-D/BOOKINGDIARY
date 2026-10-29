@@ -16,6 +16,10 @@ class Resource(Document):
         # booking-rule fields were introduced.
         self.capacity_mode = self.capacity_mode or "Exclusive"
         self.capacity = self.capacity or 1
+        self.resource_category = self.resource_category or "Other"
+        self.pricing_model = self.pricing_model or "Fixed"
+        self.fixed_price = self.fixed_price or 0
+        self.hourly_rate = self.hourly_rate or 0
         self.default_booking_duration = self.default_booking_duration or 30
         if self.maximum_advance_days is None:
             self.maximum_advance_days = 365
@@ -26,6 +30,15 @@ class Resource(Document):
 
         if self.capacity_mode not in ("Exclusive", "Per Booking", "Shared Pool"):
             frappe.throw("Capacity Mode must be Exclusive, Per Booking, or Shared Pool.")
+
+        if self.resource_category not in ("Venue", "Staff", "Equipment", "Facility", "Other"):
+            frappe.throw("Resource Category must be Venue, Staff, Equipment, Facility, or Other.")
+
+        if self.pricing_model not in ("Fixed", "Hourly"):
+            frappe.throw("Pricing Model must be Fixed or Hourly.")
+
+        if (self.fixed_price or 0) < 0 or (self.hourly_rate or 0) < 0:
+            frappe.throw("Resource prices cannot be negative.")
 
         if (self.capacity or 0) < 1:
             frappe.throw("Capacity must be at least 1.")
