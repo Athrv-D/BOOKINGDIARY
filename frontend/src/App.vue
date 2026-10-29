@@ -1865,11 +1865,7 @@ function selectSlot(resource, date, hour) {
       />
     </label>
 
-    <div v-if="selectedBookingResources.length" class="rounded-xl border border-indigo-200 bg-indigo-50 p-4 md:col-span-2">
-      <p class="text-sm font-semibold text-indigo-950">Estimated resource total</p>
-      <p class="mt-1 text-2xl font-bold text-indigo-900">{{ formatCurrency(estimatedBookingPrice) }}</p>
-      <p class="mt-1 text-xs text-indigo-800">Based on selected resources and booking duration. Hourly resources are prorated; shared-pool pricing is multiplied by requested units. Final billing is not yet captured by this estimate.</p>
-    </div>
+    
 
     <label class="block text-sm font-medium text-slate-700">
       Booking type *
