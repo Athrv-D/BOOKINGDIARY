@@ -414,3 +414,10 @@ export async function getCurrentUser() {
 export async function getCustomerOptions() {
   return frappeGet('booking_diary.api.get_customer_options')
 }
+
+export async function getBookingReport(startDate, endDate) {
+  return frappeGet('booking_diary.api.get_booking_report', {
+    start_date: startDate,
+    end_date: endDate,
+  })
+}
