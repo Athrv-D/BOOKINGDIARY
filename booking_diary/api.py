@@ -620,7 +620,7 @@ def get_booking_report(start_date, end_date):
             booking.end_time,
             booking.status,
             booking.booking_type,
-            booking.repeat_until,
+            booking.repeat_until
         FROM `tabBooking Diary` booking
         INNER JOIN `tabResource` resource ON resource.name = booking.resource
         WHERE booking.booking_date BETWEEN %s AND %s
