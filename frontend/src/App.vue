@@ -131,14 +131,25 @@ async function loadOverview() {
 
 async function setBookingDecision(booking, status) {
   if (!isBookingManager.value) return
-  const label = status === 'Confirmed' ? 'confirm' : 'reject'
-  if (!window.confirm(`${label === 'confirm' ? 'Confirm' : 'Reject'} this booking?`)) return
-  try {
-    await updateManagedBooking({ name: booking.name, status })
-    await Promise.all([loadOverview(), loadBookingsPage(), loadSchedule()])
-  } catch (error) {
-    overviewError.value = error.message || `Could not ${label} booking.`
-  }
+  const confirming = status === 'Confirmed'
+  openConfirmation({
+    title: confirming ? 'Confirm booking?' : 'Reject booking?',
+    message: confirming
+      ? `Confirm ${booking.customer || booking.booking_id || booking.name}? This will approve the booking request.`
+      : `Reject ${booking.customer || booking.booking_id || booking.name}? This will cancel the pending request.`,
+    confirmLabel: confirming ? 'Confirm booking' : 'Reject booking',
+    tone: confirming ? 'primary' : 'danger',
+    onConfirm: async () => {
+      try {
+        await updateManagedBooking({ name: booking.name, status })
+        overviewError.value = ''
+        await Promise.all([loadOverview(), loadBookingsPage(), loadSchedule()])
+      } catch (error) {
+        overviewError.value = error.message || `Could not ${confirming ? 'confirm' : 'reject'} booking.`
+        throw error
+      }
+    },
+  })
 }
 const calendarView = ref('Week')
 const selectedDate = ref(new Date())
@@ -942,6 +953,9 @@ function timelineAvailabilityStyle(slot, selectedDay) {
 
 
 const draggedBooking = ref(null)
+const confirmationDialog = ref(null)
+const confirmationBusy = ref(false)
+const confirmationError = ref('')
 const bookingAuditTrail = ref([])
 const auditTrailLoading = ref(false)
 const auditTrailError = ref('')
@@ -953,9 +967,33 @@ const bookingDetailsLoading = ref(false)
 const bookingDetailsError = ref('')
 
 
+function openConfirmation({ title, message, confirmLabel = 'Confirm', tone = 'primary', onConfirm }) {
+  confirmationError.value = ''
+  confirmationDialog.value = { title, message, confirmLabel, tone, onConfirm }
+}
+function closeConfirmation() {
+  if (confirmationBusy.value) return
+  confirmationDialog.value = null
+  confirmationError.value = ''
+}
+async function acceptConfirmation() {
+  if (!confirmationDialog.value?.onConfirm || confirmationBusy.value) return
+  confirmationBusy.value = true
+  confirmationError.value = ''
+  try {
+    await confirmationDialog.value.onConfirm()
+    confirmationDialog.value = null
+  } catch (error) {
+    confirmationError.value = error.message || 'The action could not be completed. Please try again.'
+  } finally {
+    confirmationBusy.value = false
+  }
+}
 function canDragBooking(booking) { return isBookingManager.value && ['Pending', 'Confirmed'].includes(booking.status) }
 function beginBookingDrag(event, booking) {
   if (!canDragBooking(booking)) { event.preventDefault(); return }
+  scheduleError.value = ''
+  overviewError.value = ''
   draggedBooking.value = booking
   event.dataTransfer.effectAllowed = 'move'
   event.dataTransfer.setData('text/plain', booking.docName || booking.name || '')
@@ -969,6 +1007,19 @@ function bookingTimeForApi(value) {
   if (value instanceof Date) return `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}:00`
   return String(value || '').slice(0, 8) || '00:00:00'
 }
+async function moveBookingToDate(booking, targetDate) {
+  scheduleError.value = ''
+  overviewError.value = ''
+  try {
+    await updateManagedBooking({ name: booking.docName || booking.name, resource: booking.resource, booking_date: targetDate, start_time: bookingTimeForApi(booking.start), end_time: bookingTimeForApi(booking.end), status: booking.status })
+    scheduleError.value = ''
+    await Promise.all([loadSchedule(), loadBookingsPage(), loadOverview()])
+  } catch (error) {
+    const message = error.message || 'Could not move booking. Check availability and resource rules.'
+    scheduleError.value = message
+    throw new Error(message)
+  }
+}
 async function dropBookingOnDay(event, day) {
   event.preventDefault()
   const booking = draggedBooking.value
@@ -976,14 +1027,15 @@ async function dropBookingOnDay(event, day) {
   if (!booking || !canDragBooking(booking)) return
   const targetDate = dateKey(day)
   if (targetDate === String(booking.date || booking.booking_date || '').slice(0, 10)) return
-  if (!window.confirm(`Move ${booking.title || booking.id} to ${targetDate}? Availability and resource rules will be checked.`)) return
   scheduleError.value = ''
-  try {
-    await updateManagedBooking({ name: booking.docName || booking.name, resource: booking.resource, booking_date: targetDate, start_time: bookingTimeForApi(booking.start), end_time: bookingTimeForApi(booking.end), status: booking.status })
-    await Promise.all([loadSchedule(), loadBookingsPage(), loadOverview()])
-  } catch (error) {
-    scheduleError.value = error.message || 'Could not move booking. Check availability and resource rules.'
-  }
+  overviewError.value = ''
+  openConfirmation({
+    title: 'Move booking?',
+    message: `Move ${booking.title || booking.id} to ${targetDate}? The system will check availability, capacity, blackout periods and resource rules before saving.`,
+    confirmLabel: 'Move booking',
+    tone: 'primary',
+    onConfirm: () => moveBookingToDate(booking, targetDate),
+  })
 }
 async function loadBookingAuditTrail(name) {
   if (!name) return
@@ -1088,32 +1140,35 @@ const canCancelSelectedBooking = computed(() => {
     || currentUser.value === 'Administrator'
 })
 
-async function cancelSelectedBooking() {
+function cancelSelectedBooking() {
   if (!selectedBooking.value) return
-  if (!window.confirm('Cancel this booking? The booking will remain in the system with Cancelled status.')) return
   bookingCancelError.value = ''
   bookingCancelSuccess.value = ''
-  bookingCancelling.value = true
-  try {
-    const name = selectedBooking.value.docName || selectedBooking.value.name
-    const result = await cancelBooking(name)
-    const finalStatus = result.status || 'Cancelled'
-    bookingCancelSuccess.value = result.message || (
-      finalStatus === 'Completed'
-        ? 'This booking has ended and is now marked Completed.'
-        : 'Booking cancelled.'
-    )
-    selectedBooking.value = {
-      ...selectedBooking.value,
-      status: finalStatus,
-    }
-    await loadSchedule()
-    await loadBookingsPage()
-  } catch (error) {
-    bookingCancelError.value = error.message || 'Could not cancel booking.'
-  } finally {
-    bookingCancelling.value = false
-  }
+  openConfirmation({
+    title: 'Cancel this booking?',
+    message: 'The booking will be marked Cancelled and kept in the booking history. This action cannot be undone here.',
+    confirmLabel: 'Cancel booking',
+    tone: 'danger',
+    onConfirm: async () => {
+      bookingCancelError.value = ''
+      bookingCancelling.value = true
+      try {
+        const name = selectedBooking.value.docName || selectedBooking.value.name
+        const result = await cancelBooking(name)
+        const finalStatus = result.status || 'Cancelled'
+        bookingCancelSuccess.value = result.message || (finalStatus === 'Completed'
+          ? 'This booking has ended and is now marked Completed.'
+          : 'Booking cancelled.')
+        selectedBooking.value = { ...selectedBooking.value, status: finalStatus }
+        await Promise.all([loadSchedule(), loadBookingsPage(), loadOverview()])
+      } catch (error) {
+        bookingCancelError.value = error.message || 'Could not cancel booking.'
+        throw error
+      } finally {
+        bookingCancelling.value = false
+      }
+    },
+  })
 }
 
 async function openBooking(booking) {
@@ -3115,6 +3170,26 @@ function selectSlot(resource, date, hour) {
   </section>
 </div>
 
+
+      <div v-if="confirmationDialog" class="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/50 p-4" @click.self="closeConfirmation">
+        <section role="alertdialog" aria-modal="true" aria-labelledby="confirmation-title" aria-describedby="confirmation-message" class="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div class="flex items-start gap-3 border-b border-slate-100 p-5">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" :class="confirmationDialog.tone === 'danger' ? 'bg-rose-50 text-rose-700' : 'bg-indigo-50 text-indigo-700'" aria-hidden="true">{{ confirmationDialog.tone === 'danger' ? '!' : '?' }}</span>
+            <div class="min-w-0 flex-1">
+              <h2 id="confirmation-title" class="text-lg font-bold text-slate-900">{{ confirmationDialog.title }}</h2>
+              <p id="confirmation-message" class="mt-2 text-sm leading-6 text-slate-600">{{ confirmationDialog.message }}</p>
+            </div>
+            <button type="button" @click="closeConfirmation" :disabled="confirmationBusy" aria-label="Close confirmation" class="rounded-lg px-2 py-1 text-xl text-slate-400 hover:bg-slate-100 disabled:opacity-50">×</button>
+          </div>
+          <div class="p-5">
+            <p v-if="confirmationError" class="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{{ confirmationError }}</p>
+            <div class="flex justify-end gap-2">
+              <button type="button" @click="closeConfirmation" :disabled="confirmationBusy" class="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Go back</button>
+              <button type="button" @click="acceptConfirmation" :disabled="confirmationBusy" class="rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-wait disabled:opacity-60" :class="confirmationDialog.tone === 'danger' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-indigo-600 hover:bg-indigo-700'">{{ confirmationBusy ? 'Working…' : confirmationDialog.confirmLabel }}</button>
+            </div>
+          </div>
+        </section>
+      </div>
 
       <div v-if="blackoutModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" @click.self="blackoutModalOpen = false">
         <section role="dialog" aria-modal="true" aria-labelledby="blackout-title" class="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl">
