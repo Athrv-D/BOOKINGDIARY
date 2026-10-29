@@ -28,6 +28,7 @@ import {
   getBookingReport,
   updateManagedBooking,
   rescheduleCustomerBooking,
+  getBookingAuditTrail,
 } from './api'
 
 const activeView = ref('Overview')
@@ -940,6 +941,10 @@ function timelineAvailabilityStyle(slot, selectedDay) {
 
 
 
+const draggedBooking = ref(null)
+const bookingAuditTrail = ref([])
+const auditTrailLoading = ref(false)
+const auditTrailError = ref('')
 const selectedBooking = ref(null)
 const bookingEditMode = ref(false)
 const bookingUpdateError = ref('')
@@ -947,6 +952,47 @@ const bookingUpdating = ref(false)
 const bookingDetailsLoading = ref(false)
 const bookingDetailsError = ref('')
 
+
+function canDragBooking(booking) { return isBookingManager.value && ['Pending', 'Confirmed'].includes(booking.status) }
+function beginBookingDrag(event, booking) {
+  if (!canDragBooking(booking)) { event.preventDefault(); return }
+  draggedBooking.value = booking
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('text/plain', booking.docName || booking.name || '')
+}
+function allowBookingDrop(event) {
+  if (!isBookingManager.value || !draggedBooking.value) return
+  event.preventDefault()
+  event.dataTransfer.dropEffect = 'move'
+}
+function bookingTimeForApi(value) {
+  if (value instanceof Date) return `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}:00`
+  return String(value || '').slice(0, 8) || '00:00:00'
+}
+async function dropBookingOnDay(event, day) {
+  event.preventDefault()
+  const booking = draggedBooking.value
+  draggedBooking.value = null
+  if (!booking || !canDragBooking(booking)) return
+  const targetDate = dateKey(day)
+  if (targetDate === String(booking.date || booking.booking_date || '').slice(0, 10)) return
+  if (!window.confirm(`Move ${booking.title || booking.id} to ${targetDate}? Availability and resource rules will be checked.`)) return
+  scheduleError.value = ''
+  try {
+    await updateManagedBooking({ name: booking.docName || booking.name, resource: booking.resource, booking_date: targetDate, start_time: bookingTimeForApi(booking.start), end_time: bookingTimeForApi(booking.end), status: booking.status })
+    await Promise.all([loadSchedule(), loadBookingsPage(), loadOverview()])
+  } catch (error) {
+    scheduleError.value = error.message || 'Could not move booking. Check availability and resource rules.'
+  }
+}
+async function loadBookingAuditTrail(name) {
+  if (!name) return
+  auditTrailLoading.value = true
+  auditTrailError.value = ''
+  try { bookingAuditTrail.value = await getBookingAuditTrail(name) }
+  catch (error) { auditTrailError.value = error.message || 'Could not load booking history.'; bookingAuditTrail.value = [] }
+  finally { auditTrailLoading.value = false }
+}
 
 async function saveBookingChanges() {
   bookingUpdateError.value = ''
@@ -1084,6 +1130,8 @@ async function openBooking(booking) {
   bookingCancelError.value = ''
   bookingCancelSuccess.value = ''
   bookingDetailsError.value = ''
+  bookingAuditTrail.value = []
+  auditTrailError.value = ''
   bookingDetailsLoading.value = true
 
   try {
@@ -1105,6 +1153,7 @@ async function openBooking(booking) {
   } finally {
     bookingDetailsLoading.value = false
   }
+  await loadBookingAuditTrail(documentName)
 }
 
 const bookingSubmitting = ref(false)
@@ -1664,6 +1713,12 @@ function selectSlot(resource, date, hour) {
       </div>
 
  
+<section class="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+  <div class="flex items-center justify-between gap-3"><div><h3 class="text-sm font-bold text-slate-800">Booking activity</h3><p class="mt-1 text-xs text-slate-500">Recorded changes to this booking.</p></div><button type="button" @click="loadBookingAuditTrail(selectedBooking.name || selectedBooking.docName)" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Refresh</button></div>
+  <p v-if="auditTrailLoading" class="mt-3 text-xs text-slate-500">Loading activity…</p><p v-else-if="auditTrailError" class="mt-3 text-xs text-rose-700">{{ auditTrailError }}</p><p v-else-if="!bookingAuditTrail.length" class="mt-3 text-xs text-slate-500">No recorded changes yet.</p>
+  <ol v-else class="mt-3 space-y-3"><li v-for="(entry, index) in bookingAuditTrail" :key="entry.name || index" class="border-l-2 border-indigo-200 pl-3"><div class="flex flex-wrap items-center justify-between gap-2"><p class="text-xs font-semibold text-slate-800">{{ entry.action || 'Booking updated' }}</p><time class="text-[10px] text-slate-500">{{ entry.timestamp }}</time></div><p class="mt-1 text-[11px] text-slate-500">By {{ entry.user || 'System' }}</p><ul v-if="entry.changes && entry.changes.length" class="mt-1 space-y-1"><li v-for="(change, ci) in entry.changes" :key="ci" class="text-xs text-slate-600"><span class="font-medium">{{ change.field }}:</span> {{ change.old_value || '—' }} → {{ change.new_value || '—' }}</li></ul></li></ol>
+</section>
+
 <div class="mt-7 flex justify-end gap-3">
   <button
     v-if="bookingEditMode"
@@ -2485,7 +2540,9 @@ function selectSlot(resource, date, hour) {
                 <div
                  v-for="day in monthDays"
   :key="dateKey(day)"
-  class="min-h-28 border-b border-r border-slate-100 p-2"
+  @dragover="allowBookingDrop"
+  @drop="dropBookingOnDay($event, day)"
+  class="min-h-28 border-b border-r border-slate-100 p-2 transition"
   :class="[
     day.getMonth() !== selectedDate.getMonth()
       ? 'bg-slate-50/70'
@@ -2510,6 +2567,9 @@ function selectSlot(resource, date, hour) {
                     v-for="booking in bookingsOn(day).slice(0, 3)"
                     :key="booking.id"
                     @click="openBooking(booking)"
+                    :draggable="canDragBooking(booking)"
+                    @dragstart="beginBookingDrag($event, booking)"
+                    @dragend="draggedBooking = null"
                     class="mb-1 block w-full truncate rounded px-1.5 py-1 text-left text-[10px] font-semibold"
                     :class="booking.status === 'Pending' ? 'bg-amber-50 text-amber-800' : booking.status === 'Completed' ? 'bg-emerald-50 text-emerald-800' : booking.status === 'No Show' ? 'bg-slate-100 text-slate-700' : booking.status === 'Cancelled' ? 'bg-rose-50 text-rose-800' : 'bg-blue-50 text-blue-800'"
                   >{{ booking.start }} {{ booking.title }}</button>
@@ -2542,12 +2602,15 @@ function selectSlot(resource, date, hour) {
          
               </div>
               <div class="grid grid-cols-7">
-                <div v-for="day in weekDays" :key="dateKey(day)" class="min-h-[390px] border-r border-slate-100 p-2" :class="sameDay(day, new Date()) ? 'bg-indigo-50/30' : ''">
+                <div v-for="day in weekDays" :key="dateKey(day)" @dragover="allowBookingDrop" @drop="dropBookingOnDay($event, day)" class="min-h-[390px] border-r border-slate-100 p-2 transition" :class="sameDay(day, new Date()) ? 'bg-indigo-50/30' : ''">
 
 <button
   v-for="booking in bookingsOn(day)"
   :key="booking.id"
   @click="openBooking(booking)"
+  :draggable="canDragBooking(booking)"
+  @dragstart="beginBookingDrag($event, booking)"
+  @dragend="draggedBooking = null"
   class="group mb-2 block w-full overflow-hidden rounded-lg border border-slate-200 border-l-4 p-2.5 text-left shadow-sm transition hover:border-indigo-200 hover:shadow-md"
   :class="booking.status === 'Pending'
     ? 'border-l-amber-400 bg-amber-50/80'

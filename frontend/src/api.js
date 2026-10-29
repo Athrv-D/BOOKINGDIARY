@@ -412,6 +412,10 @@ export async function getCustomerOptions() {
   return frappeGet('booking_diary.api.get_customer_options')
 }
 
+export async function getBookingAuditTrail(bookingName) {
+  return frappeGet('booking_diary.api.get_booking_audit_trail', { booking_name: bookingName })
+}
+
 export async function getBookingReport(startDate, endDate) {
   return frappeGet('booking_diary.api.get_booking_report', {
     start_date: startDate,
