@@ -816,7 +816,7 @@ const viewTitle = computed(() => {
 function bookingsOn(date) {
   const key = dateKey(date)
   return filteredBookings.value
-    .filter((booking) => booking.date === key && booking.status !== 'Cancelled')
+    .filter((booking) => booking.date === key)
     .sort((a, b) => timeToMinutes(a.start)-timeToMinutes(b.start))
 
 }
@@ -2591,8 +2591,44 @@ function selectSlot(resource, date, hour) {
 
           
           
+<!-- DAY VIEW -->
+<div v-else-if="calendarView === 'Day'" class="overflow-x-auto">
+  <div class="min-w-[720px]">
+    <div class="border-b border-slate-200 bg-slate-50 px-4 py-3">
+      <p class="text-sm font-semibold text-slate-700">{{ formatDate(selectedDate, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) }}</p>
+      <p class="mt-1 text-xs text-slate-500">Bookings grouped by resource for the selected day.</p>
+    </div>
+    <div v-if="scheduleLoading" class="p-10 text-center text-sm text-slate-500">Loading day schedule…</div>
+    <div v-else-if="!resources.filter(resource => resourceFilter === 'All resources' || resource.name === resourceFilter).some(resource => bookingsForResource(resource.name, selectedDate).length)" class="p-10 text-center">
+      <p class="text-sm font-semibold text-slate-700">No bookings for this day</p>
+      <p class="mt-1 text-xs text-slate-500">Try another date or change the resource and status filters.</p>
+    </div>
+    <div v-else class="divide-y divide-slate-100">
+      <section v-for="resource in resources.filter(resource => resourceFilter === 'All resources' || resource.name === resourceFilter)" :key="resource.name" class="grid gap-3 p-4 md:grid-cols-[220px_1fr]">
+        <div>
+          <h4 class="text-sm font-semibold text-slate-800">{{ resource.resource_name || resource.name }}</h4>
+          <p class="mt-1 text-xs text-slate-500">{{ resource.resource_type || resource.resource_category || 'Resource' }}</p>
+          <p class="mt-1 text-xs text-slate-400">{{ bookingsForResource(resource.name, selectedDate).length }} bookings</p>
+          <span v-if="blackoutResourcesOn(selectedDate).some(item => item.name === resource.name)" class="mt-2 inline-flex rounded bg-rose-100 px-2 py-1 text-[10px] font-semibold text-rose-700">Blackout</span>
+        </div>
+        <div class="space-y-2">
+          <button v-for="booking in bookingsForResource(resource.name, selectedDate)" :key="booking.id" @click="openBooking(booking)" class="flex w-full items-start gap-3 rounded-lg border p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40" :class="booking.status === 'Pending' ? 'border-amber-200 bg-amber-50/60' : booking.status === 'Cancelled' ? 'border-rose-200 bg-rose-50/60' : 'border-slate-200 bg-white'">
+            <span class="min-w-[108px] text-xs font-bold tabular-nums text-slate-700">{{ timeLabel(booking.start) }}–{{ timeLabel(booking.end) }}</span>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-semibold text-slate-800">{{ booking.title || 'Untitled booking' }}</span>
+              <span class="mt-1 block text-xs text-slate-500">{{ booking.status }}</span>
+            </span>
+            <span class="text-xs font-semibold text-indigo-600">Details →</span>
+          </button>
+          <p v-if="!bookingsForResource(resource.name, selectedDate).length" class="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-xs text-slate-400">No bookings</p>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
 <!-- TIMELINE VIEW -->
-<div v-else class="overflow-x-auto">
+<div v-else-if="calendarView === 'Timeline'" class="overflow-x-auto">
   <div class="min-w-[2590px]">
     <!-- Timeline header -->
     <div class="grid grid-cols-[190px_2400px] border-b border-slate-200 bg-slate-50">
