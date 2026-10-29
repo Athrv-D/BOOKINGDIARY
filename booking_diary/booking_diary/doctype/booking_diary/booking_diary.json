@@ -12,6 +12,10 @@
   "start_time",
   "end_time",
   "customer",
+  "customer_record",
+  "contact",
+  "customer_phone",
+  "customer_email",
   "customer_user",
   "attendee_count",
   "booking_quantity",
@@ -70,6 +74,28 @@
    "fieldname": "customer",
    "fieldtype": "Data",
    "label": "Customer"
+  },
+  {
+   "fieldname": "customer_record",
+   "fieldtype": "Link",
+   "label": "Customer Record",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "contact",
+   "fieldtype": "Link",
+   "label": "Contact",
+   "options": "Contact"
+  },
+  {
+   "fieldname": "customer_phone",
+   "fieldtype": "Data",
+   "label": "Customer Phone"
+  },
+  {
+   "fieldname": "customer_email",
+   "fieldtype": "Data",
+   "label": "Customer Email"
   },
   {
    "fieldname": "customer_user",

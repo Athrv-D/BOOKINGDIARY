@@ -79,6 +79,10 @@ def create_group_booking(
     booking_type="Single Slot",
     repeat_until=None,
     customer="",
+    customer_record=None,
+    contact=None,
+    customer_phone="",
+    customer_email="",
     remarks="",
     attendee_count=1,
     booking_quantity=1,
@@ -152,6 +156,10 @@ def create_group_booking(
                 "booking_type": booking_type,
                 "repeat_until": repeat_until if booking_type == "Recurring" else None,
                 "customer": (customer or "").strip(),
+                "customer_record": customer_record or None,
+                "contact": contact or None,
+                "customer_phone": (customer_phone or "").strip(),
+                "customer_email": (customer_email or "").strip(),
                 "attendee_count": int(attendee_count or 1),
                 "booking_quantity": int(booking_quantity or 1),
                 "remarks": (remarks or "").strip(),
@@ -575,3 +583,24 @@ def update_managed_booking(
     booking.save()
     frappe.db.commit()
     return frappe.get_doc("Booking Diary", booking.name).as_dict()
+
+
+@frappe.whitelist()
+def get_customer_options():
+    """Return a bounded list of ERPNext customers and contacts for booking forms."""
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in to view customer records.")
+
+    customers = []
+    contacts = []
+    if frappe.db.exists("DocType", "Customer"):
+        customers = frappe.get_list(
+            "Customer", fields=["name", "customer_name"],
+            order_by="customer_name asc", page_length=500,
+        )
+    if frappe.db.exists("DocType", "Contact"):
+        contacts = frappe.get_list(
+            "Contact", fields=["name", "first_name", "last_name", "email_id", "phone"],
+            order_by="first_name asc", page_length=500,
+        )
+    return {"customers": customers, "contacts": contacts}

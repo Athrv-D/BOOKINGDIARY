@@ -29,6 +29,7 @@ class BookingDiary(Document):
         self.set_booking_series_id()
         self.set_booking_source()
         self.validate_customer_ownership()
+        self.validate_customer_details()
         self.validate_status_transition()
         self.validate_field_protection()
         self.validate_time()
@@ -101,6 +102,39 @@ class BookingDiary(Document):
                 "or modify another user's booking."
             )
 
+
+
+    def validate_customer_details(self):
+        """Validate optional Customer/Contact links and populate contact details."""
+        if self.customer_record:
+            if not frappe.db.exists("Customer", self.customer_record):
+                frappe.throw("Select an existing Customer record.")
+            customer_name = frappe.db.get_value(
+                "Customer", self.customer_record, "customer_name"
+            )
+            if customer_name:
+                self.customer = customer_name
+
+        if self.contact:
+            if not frappe.db.exists("Contact", self.contact):
+                frappe.throw("Select an existing Contact record.")
+            contact = frappe.db.get_value(
+                "Contact", self.contact,
+                ["first_name", "last_name", "email_id", "phone"],
+                as_dict=True,
+            ) or {}
+            contact_name = " ".join(
+                part for part in (contact.get("first_name"), contact.get("last_name")) if part
+            ).strip()
+            if contact_name and not self.customer_record:
+                self.customer = contact_name
+            if not self.customer_email and contact.get("email_id"):
+                self.customer_email = contact.email_id
+            if not self.customer_phone and contact.get("phone"):
+                self.customer_phone = contact.phone
+
+        if self.customer_email and "@" not in self.customer_email:
+            frappe.throw("Enter a valid customer email address.")
 
     def validate_status_transition(self):
         user = frappe.session.user
