@@ -840,7 +840,7 @@ const viewTitle = computed(() => {
 function bookingsOn(date) {
   const key = dateKey(date)
   return filteredBookings.value
-    .filter((booking) => booking.date === key && booking.status !== 'Cancelled')
+    .filter((booking) => booking.date === key)
     .sort((a, b) => timeToMinutes(a.start)-timeToMinutes(b.start))
 
 }
