@@ -1536,7 +1536,7 @@ function selectSlot(resource, date, hour) {
       <nav class="flex gap-1 overflow-x-auto p-3 md:flex-1 md:flex-col">
         <p class="hidden px-3 pb-2 pt-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 md:block">Workspace</p>
         <button
-          v-for="item in navigation"
+          v-for="item in navigation.filter(item => item.name !== 'Reports' || isBookingManager)"
           :key="item.name"
           @click="activeView = item.name; if (item.name === 'Bookings') loadBookingsPage(); if (item.name === 'Overview') loadOverview(); if (item.name === 'Reports') loadReports()"
           class="flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition"
