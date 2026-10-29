@@ -23,7 +23,6 @@ def get_my_bookings():
             "start_time",
             "end_time",
             "status",
-            "payment_status",
         ],
         order_by="booking_date desc, start_time desc",
     )
@@ -46,9 +45,6 @@ def get_resources():
             "time_zone",
             "capacity_mode",
             "capacity",
-            "pricing_model",
-            "fixed_price",
-            "hourly_rate",
         ],
         order_by="resource_name asc",
         page_length=500,
@@ -623,12 +619,8 @@ def get_booking_report(start_date, end_date):
             booking.start_time,
             booking.end_time,
             booking.status,
-            booking.payment_status,
             booking.booking_type,
-            booking.repeat_until,
-            resource.pricing_model,
-            resource.fixed_price,
-            resource.hourly_rate
+            booking.repeat_until
         FROM `tabBooking Diary` booking
         INNER JOIN `tabResource` resource ON resource.name = booking.resource
         WHERE booking.booking_date BETWEEN %s AND %s
