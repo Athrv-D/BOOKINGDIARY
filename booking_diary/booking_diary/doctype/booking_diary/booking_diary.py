@@ -345,22 +345,43 @@ class BookingDiary(Document):
             )
 
     def validate_blackout(self):
+        booking_date = frappe.utils.getdate(self.booking_date)
+        booking_start = frappe.utils.get_time(self.start_time)
+        booking_end = frappe.utils.get_time(self.end_time)
         blackouts = frappe.get_all(
             "Blackout Date",
-            filters={"blackout_date": self.booking_date},
-            fields=["resource", "reason", "applies_globally"],
+            filters={"blackout_date": ["<=", booking_date]},
+            fields=["resource", "reason", "applies_globally", "blackout_date",
+                    "blackout_end_date", "start_time", "end_time"],
+            limit_page_length=1000,
         )
 
-        for blackout in blackouts:
-            if (
-                blackout.applies_globally
-                or blackout.resource == self.resource
-            ):
-                reason = blackout.reason or "No reason provided"
+        def seconds(value):
+            value = frappe.utils.get_time(value)
+            return value.hour * 3600 + value.minute * 60 + value.second
 
+        for blackout in blackouts:
+            blackout_start_date = frappe.utils.getdate(blackout.blackout_date)
+            blackout_end_date = frappe.utils.getdate(
+                blackout.blackout_end_date or blackout.blackout_date
+            )
+            if not (blackout_start_date <= booking_date <= blackout_end_date):
+                continue
+            if not (blackout.applies_globally or blackout.resource == self.resource):
+                continue
+            if not blackout.start_time and not blackout.end_time:
+                overlaps = True
+            else:
+                overlaps = (
+                    seconds(booking_start) < seconds(blackout.end_time)
+                    and seconds(booking_end) > seconds(blackout.start_time)
+                )
+            if overlaps:
+                reason = blackout.reason or "No reason provided"
+                window = "all day" if not blackout.start_time else f"{blackout.start_time}–{blackout.end_time}"
                 frappe.throw(
-                    f"Cannot create booking for {self.resource} "
-                    f"on {self.booking_date}. Reason: {reason}"
+                    f"Cannot book {self.resource} on {booking_date} during "
+                    f"blackout {window}. Reason: {reason}"
                 )
 
    
