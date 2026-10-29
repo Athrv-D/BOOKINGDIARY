@@ -8,10 +8,14 @@
  "field_order": [
   "resource_name",
   "resource_type",
+  "resource_category",
   "description",
   "available",
   "capacity_mode",
   "capacity",
+  "pricing_model",
+  "fixed_price",
+  "hourly_rate",
   "default_booking_duration",
   "buffer_before_minutes",
   "buffer_after_minutes",
@@ -35,6 +39,15 @@
    "in_list_view": 1,
    "label": "Resource Type",
    "reqd": 1
+  },
+  {
+   "fieldname": "resource_category",
+   "fieldtype": "Select",
+   "label": "Resource Category",
+   "options": "Venue\nStaff\nEquipment\nFacility\nOther",
+   "default": "Venue",
+   "reqd": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "description",
@@ -63,6 +76,29 @@
    "default": "1",
    "reqd": 1,
    "description": "Maximum people for Per Booking, or total units for Shared Pool."
+  },
+  {
+   "fieldname": "pricing_model",
+   "fieldtype": "Select",
+   "label": "Pricing Model",
+   "options": "Fixed\nHourly",
+   "default": "Fixed",
+   "reqd": 1,
+   "description": "Choose a fixed price per booking or an hourly rate."
+  },
+  {
+   "fieldname": "fixed_price",
+   "fieldtype": "Currency",
+   "label": "Fixed Price",
+   "default": "0",
+   "description": "Price per booking when Pricing Model is Fixed."
+  },
+  {
+   "fieldname": "hourly_rate",
+   "fieldtype": "Currency",
+   "label": "Hourly Rate",
+   "default": "0",
+   "description": "Price per hour when Pricing Model is Hourly."
   },
   {
    "fieldname": "default_booking_duration",
