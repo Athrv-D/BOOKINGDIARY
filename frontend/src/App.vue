@@ -1145,7 +1145,7 @@ function formatCurrency(value) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(value) || 0)
 }
 
-const selectedCapacityModes = computed(() => ([
+const selectedCapacityModes = computed(() => [
   ...new Set(selectedBookingResources.value.map(resource => resource.capacity_mode || 'Exclusive')),
 ])
 
