@@ -50,6 +50,8 @@ const reportActiveCount = computed(() => reportRecords.value.filter(row => ['Pen
 const reportConfirmedCount = computed(() => reportRecords.value.filter(row => row.status === 'Confirmed').length)
 const reportPendingCount = computed(() => reportRecords.value.filter(row => row.status === 'Pending').length)
 const reportCancelledCount = computed(() => reportRecords.value.filter(row => row.status === 'Cancelled').length)
+const reportCompletedCount = computed(() => reportRecords.value.filter(row => row.status === 'Completed').length)
+const reportNoShowCount = computed(() => reportRecords.value.filter(row => row.status === 'No Show').length)
 const reportEstimatedValue = computed(() => reportRecords.value.reduce((sum, row) => {
   if (row.status === 'Cancelled') return sum
   const start = String(row.start_time || '00:00').split(':').map(Number)
@@ -2506,6 +2508,8 @@ function selectSlot(resource, date, hour) {
                 <option>All statuses</option>
                 <option>Confirmed</option>
                 <option>Pending</option>
+                <option>Completed</option>
+                <option>No Show</option>
                 <option>Cancelled</option>
               </select>
             </label>
@@ -3060,10 +3064,12 @@ function selectSlot(resource, date, hour) {
   </section>
   <div v-if="reportLoading" class="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">Loading report data…</div>
   <template v-else-if="reportLoaded">
-    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
       <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Bookings</p><p class="mt-2 text-3xl font-bold text-slate-900">{{ reportRecords.length }}</p></div>
       <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Confirmed</p><p class="mt-2 text-3xl font-bold text-emerald-700">{{ reportConfirmedCount }}</p></div>
       <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Pending</p><p class="mt-2 text-3xl font-bold text-amber-700">{{ reportPendingCount }}</p></div>
+      <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Completed</p><p class="mt-2 text-3xl font-bold text-emerald-700">{{ reportCompletedCount }}</p></div>
+      <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">No show</p><p class="mt-2 text-3xl font-bold text-slate-700">{{ reportNoShowCount }}</p></div>
       <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Cancelled</p><p class="mt-2 text-3xl font-bold text-rose-700">{{ reportCancelledCount }}</p></div>
       <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Estimated value</p><p class="mt-2 text-2xl font-bold text-indigo-700">{{ formatCurrency(reportEstimatedValue) }}</p></div>
     </div>
