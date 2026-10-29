@@ -442,7 +442,7 @@ def get_current_user():
 
 @frappe.whitelist()
 def complete_past_bookings():
-    """Mark elapsed pending/confirmed bookings completed in resource-local time."""
+    """Mark only elapsed Confirmed bookings Completed; Pending bookings stay Pending."""
     from datetime import datetime
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -460,7 +460,7 @@ def complete_past_bookings():
             resource.time_zone
         FROM `tabBooking Diary` booking
         INNER JOIN `tabResource` resource ON resource.name = booking.resource
-        WHERE booking.status IN ('Pending', 'Confirmed')
+        WHERE booking.status = 'Confirmed'
         """,
         as_dict=True,
     )
