@@ -164,6 +164,10 @@ export async function createBooking({
   bookingType = 'Single Slot',
   repeatUntil = null,
   customer = '',
+  customerRecord = '',
+  contact = '',
+  customerPhone = '',
+  customerEmail = '',
   remarks = '',
   attendeeCount = 1,
   bookingQuantity = 1,
@@ -182,6 +186,10 @@ export async function createBooking({
     booking_type: bookingType,
     repeat_until: bookingType === 'Recurring' ? repeatUntil : null,
     customer,
+    customer_record: customerRecord || null,
+    contact: contact || null,
+    customer_phone: customerPhone,
+    customer_email: customerEmail,
     remarks,
     attendee_count: Number(attendeeCount) || 1,
     booking_quantity: Number(bookingQuantity) || 1,
@@ -400,4 +408,9 @@ export async function rescheduleCustomerBooking({ name, resource, bookingDate, s
 
 export async function getCurrentUser() {
   return frappeGet('booking_diary.api.get_current_user')
+}
+
+
+export async function getCustomerOptions() {
+  return frappeGet('booking_diary.api.get_customer_options')
 }
