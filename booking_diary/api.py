@@ -633,6 +633,56 @@ def get_booking_report(start_date, end_date):
 
 
 @frappe.whitelist()
+def get_booking_audit_trail(booking_name):
+    """Return a permission-checked history of changes to a booking."""
+    import json
+
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in to view booking history.")
+    booking = frappe.get_doc("Booking Diary", booking_name)
+    roles = set(frappe.get_roles(frappe.session.user))
+    is_manager = (
+        frappe.session.user == "Administrator"
+        or "System Manager" in roles
+        or "Booking Manager" in roles
+    )
+    if not is_manager and (
+        "Booking User" not in roles or booking.customer_user != frappe.session.user
+    ):
+        frappe.throw("You do not have permission to view this booking history.")
+
+    versions = frappe.get_all(
+        "Version",
+        filters={"ref_doctype": "Booking Diary", "docname": booking_name},
+        fields=["name", "owner", "creation", "data"],
+        order_by="creation desc",
+        limit_page_length=100,
+    )
+    history = []
+    for version in versions:
+        try:
+            data = json.loads(version.data or "{}")
+        except (TypeError, ValueError):
+            data = {}
+        changes = []
+        for item in data.get("changed", []):
+            if len(item) >= 3:
+                changes.append({
+                    "field": str(item[0]).replace("_", " ").title(),
+                    "old_value": str(item[1] if item[1] is not None else ""),
+                    "new_value": str(item[2] if item[2] is not None else ""),
+                })
+        history.append({
+            "name": version.name,
+            "user": version.owner,
+            "timestamp": str(version.creation),
+            "action": "Booking updated" if changes else "Booking activity",
+            "changes": changes,
+        })
+    return history
+
+
+@frappe.whitelist()
 def get_customer_options():
     """Return a bounded list of ERPNext customers and contacts for booking forms."""
     if frappe.session.user == "Guest":
