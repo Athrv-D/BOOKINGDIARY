@@ -585,6 +585,61 @@ def update_managed_booking(
     return frappe.get_doc("Booking Diary", booking.name).as_dict()
 
 
+
+
+@frappe.whitelist()
+def get_booking_report(start_date, end_date):
+    """Return manager-only booking report rows for a validated date range."""
+    from frappe.utils import getdate
+
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in to view booking reports.")
+
+    roles = set(frappe.get_roles(frappe.session.user))
+    if not (
+        frappe.session.user == "Administrator"
+        or "System Manager" in roles
+        or "Booking Manager" in roles
+    ):
+        frappe.throw("Only Booking Managers and administrators can access reports.")
+
+    start = getdate(start_date)
+    end = getdate(end_date)
+    if end < start:
+        frappe.throw("End date must be on or after the start date.")
+    if (end - start).days > 366:
+        frappe.throw("Reports can cover at most 367 calendar days at a time.")
+
+    return frappe.db.sql(
+        """
+        SELECT
+            booking.name,
+            booking.booking_id,
+            booking.customer,
+            booking.resource,
+            resource.resource_name,
+            resource.resource_category,
+            booking.booking_date,
+            booking.start_time,
+            booking.end_time,
+            booking.status,
+            booking.payment_status,
+            booking.booking_type,
+            booking.repeat_until,
+            resource.pricing_model,
+            resource.fixed_price,
+            resource.hourly_rate
+        FROM `tabBooking Diary` booking
+        INNER JOIN `tabResource` resource ON resource.name = booking.resource
+        WHERE booking.booking_date BETWEEN %s AND %s
+        ORDER BY booking.booking_date DESC, booking.start_time DESC
+        LIMIT 5000
+        """,
+        (start, end),
+        as_dict=True,
+    )
+
+
 @frappe.whitelist()
 def get_customer_options():
     """Return a bounded list of ERPNext customers and contacts for booking forms."""
