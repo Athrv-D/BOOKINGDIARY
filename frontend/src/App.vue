@@ -25,6 +25,7 @@ import {
   validateGroupBooking,
   cancelBooking,
   getOverviewBookings,
+  getBookingReport,
   updateManagedBooking,
   rescheduleCustomerBooking,
 } from './api'
@@ -38,6 +39,79 @@ const isBookingManager = computed(() =>
   currentUserRoles.value.includes('System Manager') ||
   currentUserRoles.value.includes('Booking Manager')
 )
+const todayForReports = new Date()
+const reportStartDate = ref(`${todayForReports.getFullYear()}-${String(todayForReports.getMonth() + 1).padStart(2, '0')}-01`)
+const reportEndDate = ref(`${todayForReports.getFullYear()}-${String(todayForReports.getMonth() + 1).padStart(2, '0')}-${String(new Date(todayForReports.getFullYear(), todayForReports.getMonth() + 1, 0).getDate()).padStart(2, '0')}`)
+const reportRecords = ref([])
+const reportLoading = ref(false)
+const reportError = ref('')
+const reportLoaded = ref(false)
+const reportActiveCount = computed(() => reportRecords.value.filter(row => ['Pending', 'Confirmed'].includes(row.status)).length)
+const reportConfirmedCount = computed(() => reportRecords.value.filter(row => row.status === 'Confirmed').length)
+const reportPendingCount = computed(() => reportRecords.value.filter(row => row.status === 'Pending').length)
+const reportCancelledCount = computed(() => reportRecords.value.filter(row => row.status === 'Cancelled').length)
+const reportEstimatedValue = computed(() => reportRecords.value.reduce((sum, row) => {
+  if (row.status === 'Cancelled') return sum
+  const start = String(row.start_time || '00:00').split(':').map(Number)
+  const end = String(row.end_time || '00:00').split(':').map(Number)
+  let minutes = (end[0] * 60 + end[1]) - (start[0] * 60 + start[1])
+  if (minutes < 0) minutes += 24 * 60
+  const amount = row.pricing_model === 'Hourly'
+    ? (Number(row.hourly_rate) || 0) * minutes / 60
+    : (Number(row.fixed_price) || 0)
+  return sum + amount
+}, 0))
+const reportByResource = computed(() => {
+  const grouped = new Map()
+  for (const row of reportRecords.value) {
+    const key = row.resource_name || row.resource || 'Unknown'
+    const entry = grouped.get(key) || { name: key, count: 0, confirmed: 0, pending: 0, cancelled: 0 }
+    entry.count += 1
+    if (row.status === 'Confirmed') entry.confirmed += 1
+    if (row.status === 'Pending') entry.pending += 1
+    if (row.status === 'Cancelled') entry.cancelled += 1
+    grouped.set(key, entry)
+  }
+  return [...grouped.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+})
+async function loadReports() {
+  if (!isBookingManager.value) {
+    reportError.value = 'Reports are available to Booking Managers and administrators only.'
+    return
+  }
+  if (!reportStartDate.value || !reportEndDate.value || reportEndDate.value < reportStartDate.value) {
+    reportError.value = 'Choose a valid date range.'
+    return
+  }
+  reportLoading.value = true
+  reportError.value = ''
+  try {
+    reportRecords.value = await getBookingReport(reportStartDate.value, reportEndDate.value)
+    reportLoaded.value = true
+  } catch (error) {
+    reportError.value = error.message || 'Could not load booking reports.'
+  } finally {
+    reportLoading.value = false
+  }
+}
+function exportBookingReport() {
+  const columns = [
+    ['Booking ID', 'booking_id'], ['Customer', 'customer'], ['Resource', 'resource_name'],
+    ['Category', 'resource_category'], ['Date', 'booking_date'], ['Start', 'start_time'],
+    ['End', 'end_time'], ['Status', 'status'], ['Payment Status', 'payment_status'],
+    ['Pricing Model', 'pricing_model'], ['Fixed Price', 'fixed_price'], ['Hourly Rate', 'hourly_rate'],
+  ]
+  const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`
+  const csv = [columns.map(([label]) => quote(label)).join(','), ...reportRecords.value.map(row => columns.map(([, key]) => quote(row[key])).join(','))].join('\r\n')
+  const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `booking-report-${reportStartDate.value}-to-${reportEndDate.value}.csv`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 const overviewRecords = ref([])
 const overviewLoading = ref(false)
 const overviewError = ref('')
@@ -81,6 +155,7 @@ const navigation = [
   { name: 'Resource Desk', icon: '▦' },
   { name: 'Bookings', icon: '▤' },
   { name: 'Resources', icon: '▧' },
+  { name: 'Reports', icon: '▤' },
 ]
 
 const resources = ref([])
@@ -1463,7 +1538,7 @@ function selectSlot(resource, date, hour) {
         <button
           v-for="item in navigation"
           :key="item.name"
-          @click="activeView = item.name; if (item.name === 'Bookings') loadBookingsPage(); if (item.name === 'Overview') loadOverview()"
+          @click="activeView = item.name; if (item.name === 'Bookings') loadBookingsPage(); if (item.name === 'Overview') loadOverview(); if (item.name === 'Reports') loadReports()"
           class="flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition"
           :class="activeView === item.name ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'"
         >
@@ -2907,6 +2982,45 @@ function selectSlot(resource, date, hour) {
       </p>
     </div>
   </section>
+</div>
+
+<div v-else-if="activeView === 'Reports'" class="space-y-6 p-4 md:p-8">
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <h2 class="text-2xl font-bold tracking-tight text-slate-900">Booking Reports</h2>
+      <p class="mt-1 text-sm text-slate-500">Operational summary by date range, status and resource.</p>
+    </div>
+    <button type="button" @click="exportBookingReport" :disabled="!reportLoaded || !reportRecords.length" class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Export CSV</button>
+  </div>
+  <section class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <form class="grid gap-3 sm:grid-cols-[1fr_1fr_auto]" @submit.prevent="loadReports">
+      <label class="text-sm font-medium text-slate-700">From date<input v-model="reportStartDate" type="date" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5" /></label>
+      <label class="text-sm font-medium text-slate-700">To date<input v-model="reportEndDate" type="date" required :min="reportStartDate" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5" /></label>
+      <button type="submit" :disabled="reportLoading" class="self-end rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{{ reportLoading ? 'Loading…' : 'Run report' }}</button>
+    </form>
+    <p class="mt-3 text-xs text-slate-500">Maximum range: 367 calendar days. Estimated value uses current resource prices and excludes cancelled bookings; it is not a stored invoice total. Results are capped at 5,000 bookings.</p>
+    <p v-if="reportError" class="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{{ reportError }}</p>
+  </section>
+  <div v-if="reportLoading" class="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">Loading report data…</div>
+  <template v-else-if="reportLoaded">
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Bookings</p><p class="mt-2 text-3xl font-bold text-slate-900">{{ reportRecords.length }}</p></div>
+      <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Confirmed</p><p class="mt-2 text-3xl font-bold text-emerald-700">{{ reportConfirmedCount }}</p></div>
+      <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Pending</p><p class="mt-2 text-3xl font-bold text-amber-700">{{ reportPendingCount }}</p></div>
+      <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Cancelled</p><p class="mt-2 text-3xl font-bold text-rose-700">{{ reportCancelledCount }}</p></div>
+      <div class="rounded-xl border border-slate-200 bg-white p-5"><p class="text-sm text-slate-500">Estimated value</p><p class="mt-2 text-2xl font-bold text-indigo-700">{{ formatCurrency(reportEstimatedValue) }}</p></div>
+    </div>
+    <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div class="border-b border-slate-100 p-5"><h3 class="font-bold text-slate-900">Bookings by resource</h3><p class="mt-1 text-xs text-slate-500">Includes cancelled bookings in volume counts.</p></div>
+      <div v-if="!reportByResource.length" class="p-8 text-center text-sm text-slate-500">No bookings in this date range.</div>
+      <div v-else class="overflow-x-auto"><table class="w-full min-w-[600px] text-left text-sm"><thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th class="px-4 py-3">Resource</th><th class="px-4 py-3">Total</th><th class="px-4 py-3">Confirmed</th><th class="px-4 py-3">Pending</th><th class="px-4 py-3">Cancelled</th></tr></thead><tbody><tr v-for="item in reportByResource" :key="item.name" class="border-t border-slate-100"><td class="px-4 py-3 font-medium text-slate-800">{{ item.name }}</td><td class="px-4 py-3">{{ item.count }}</td><td class="px-4 py-3">{{ item.confirmed }}</td><td class="px-4 py-3">{{ item.pending }}</td><td class="px-4 py-3">{{ item.cancelled }}</td></tr></tbody></table></div>
+    </section>
+    <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div class="border-b border-slate-100 p-5"><h3 class="font-bold text-slate-900">Booking detail</h3><p class="mt-1 text-xs text-slate-500">Current resource pricing is used only for indicative estimates.</p></div>
+      <div v-if="!reportRecords.length" class="p-8 text-center text-sm text-slate-500">No booking records found.</div>
+      <div v-else class="overflow-x-auto"><table class="w-full min-w-[850px] text-left text-sm"><thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th class="px-4 py-3">Booking ID</th><th class="px-4 py-3">Customer</th><th class="px-4 py-3">Resource</th><th class="px-4 py-3">Date</th><th class="px-4 py-3">Time</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Payment</th></tr></thead><tbody><tr v-for="row in reportRecords" :key="row.name" class="border-t border-slate-100"><td class="px-4 py-3 font-semibold">{{ row.booking_id || row.name }}</td><td class="px-4 py-3">{{ row.customer || '—' }}</td><td class="px-4 py-3">{{ row.resource_name || row.resource }}</td><td class="px-4 py-3">{{ row.booking_date }}</td><td class="px-4 py-3">{{ row.start_time }}–{{ row.end_time }}</td><td class="px-4 py-3">{{ row.status }}</td><td class="px-4 py-3">{{ row.payment_status || 'Pending' }}</td></tr></tbody></table></div>
+    </section>
+  </template>
 </div>
 
 <div v-else class="p-5 md:p-8">
