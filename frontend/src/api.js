@@ -366,17 +366,20 @@ export async function getBookings() {
 export async function getBlackoutDates() {
   return frappeGet('frappe.client.get_list', {
     doctype: 'Blackout Date',
-    fields: JSON.stringify(['name', 'resource', 'blackout_date', 'reason', 'applies_globally']),
+    fields: JSON.stringify(['name', 'resource', 'blackout_date', 'blackout_end_date', 'start_time', 'end_time', 'reason', 'applies_globally']),
     order_by: 'blackout_date desc',
     limit_page_length: 500,
   })
 }
 
-export async function createBlackoutDate({ resource = '', blackoutDate, reason = '', appliesGlobally = false }) {
+export async function createBlackoutDate({ resource = '', blackoutDate, blackoutEndDate = '', startTime = '', endTime = '', reason = '', appliesGlobally = false }) {
   const doc = {
     doctype: 'Blackout Date',
     resource: appliesGlobally ? '' : resource,
     blackout_date: blackoutDate,
+    blackout_end_date: blackoutEndDate || blackoutDate,
+    start_time: startTime ? `${startTime}:00` : null,
+    end_time: endTime ? `${endTime}:00` : null,
     reason: reason.trim(),
     applies_globally: appliesGlobally ? 1 : 0,
   }

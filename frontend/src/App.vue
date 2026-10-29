@@ -168,6 +168,9 @@ const blackoutSaving = ref(false)
 const blackoutError = ref('')
 const blackoutForm = ref({
   blackout_date: '',
+  blackout_end_date: '',
+  start_time: '',
+  end_time: '',
   resource: 'All resources',
   applies_globally: true,
   reason: '',
@@ -447,6 +450,9 @@ function openBlackoutForm() {
   blackoutError.value = ''
   blackoutForm.value = {
     blackout_date: dateKey(selectedDate.value),
+    blackout_end_date: dateKey(selectedDate.value),
+    start_time: '',
+    end_time: '',
     resource: resourceFilter.value !== 'All resources' ? resourceFilter.value : (resources.value[0]?.name || ''),
     applies_globally: resourceFilter.value === 'All resources',
     reason: '',
@@ -460,6 +466,18 @@ async function saveBlackoutDate() {
     blackoutError.value = 'Choose a blackout date.'
     return
   }
+  if (blackoutForm.value.blackout_end_date && blackoutForm.value.blackout_end_date < blackoutForm.value.blackout_date) {
+    blackoutError.value = 'End date must be on or after the start date.'
+    return
+  }
+  if (Boolean(blackoutForm.value.start_time) !== Boolean(blackoutForm.value.end_time)) {
+    blackoutError.value = 'Enter both times for a partial-day blackout, or leave both blank for all day.'
+    return
+  }
+  if (blackoutForm.value.start_time && blackoutForm.value.start_time >= blackoutForm.value.end_time) {
+    blackoutError.value = 'End time must be after start time.'
+    return
+  }
   if (!blackoutForm.value.applies_globally && !blackoutForm.value.resource) {
     blackoutError.value = 'Choose a resource or apply the blackout globally.'
     return
@@ -469,6 +487,9 @@ async function saveBlackoutDate() {
   try {
     await createBlackoutDate({
       blackoutDate: blackoutForm.value.blackout_date,
+      blackoutEndDate: blackoutForm.value.blackout_end_date,
+      startTime: blackoutForm.value.start_time,
+      endTime: blackoutForm.value.end_time,
       resource: blackoutForm.value.resource,
       appliesGlobally: blackoutForm.value.applies_globally,
       reason: blackoutForm.value.reason,
@@ -2945,6 +2966,21 @@ function selectSlot(resource, date, hour) {
               <span class="mb-1.5 block text-sm font-semibold text-slate-700">Date</span>
               <input v-model="blackoutForm.blackout_date" type="date" required class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
             </label>
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold text-slate-700">End date</span>
+              <input v-model="blackoutForm.blackout_end_date" type="date" required :min="blackoutForm.blackout_date" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
+            </label>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label class="block">
+                <span class="mb-1.5 block text-sm font-semibold text-slate-700">Start time (optional)</span>
+                <input v-model="blackoutForm.start_time" type="time" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
+              </label>
+              <label class="block">
+                <span class="mb-1.5 block text-sm font-semibold text-slate-700">End time (optional)</span>
+                <input v-model="blackoutForm.end_time" type="time" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
+              </label>
+            </div>
+            <p class="text-xs text-slate-500">Leave both times blank to block the full day. Times apply on each date in the range.</p>
             <label class="flex items-start gap-3 rounded-lg border border-slate-200 p-3">
               <input v-model="blackoutForm.applies_globally" type="checkbox" class="mt-1 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
               <span><span class="block text-sm font-semibold text-slate-800">Apply to all resources</span><span class="mt-0.5 block text-xs text-slate-500">No resource can be booked on this date.</span></span>
