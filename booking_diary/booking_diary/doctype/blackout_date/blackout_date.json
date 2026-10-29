@@ -7,6 +7,9 @@
  "field_order": [
   "resource",
   "blackout_date",
+  "blackout_end_date",
+  "start_time",
+  "end_time",
   "reason",
   "applies_globally"
  ],
@@ -32,6 +35,22 @@
    "fieldname": "blackout_date",
    "fieldtype": "Date",
    "label": "Date"
+  },
+  {
+   "fieldname": "blackout_end_date",
+   "fieldtype": "Date",
+   "label": "End Date"
+  },
+  {
+   "fieldname": "start_time",
+   "fieldtype": "Time",
+   "label": "Start Time",
+   "description": "Leave both times blank to block the entire day."
+  },
+  {
+   "fieldname": "end_time",
+   "fieldtype": "Time",
+   "label": "End Time"
   }
  ],
  "grid_page_length": 50,
