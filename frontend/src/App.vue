@@ -241,6 +241,10 @@ async function openResourceEdit(resource) {
 
     resourceForm.value = {
       ...doc,
+      resource_category: doc.resource_category || 'Other',
+      pricing_model: doc.pricing_model || 'Fixed',
+      fixed_price: Number(doc.fixed_price) || 0,
+      hourly_rate: Number(doc.hourly_rate) || 0,
       available: Boolean(doc.available),
     }
 
@@ -2661,7 +2665,8 @@ function selectSlot(resource, date, hour) {
         <thead>
           <tr class="border-b border-slate-200 text-slate-500">
             <th class="px-3 py-3 font-medium">Resource Name</th>
-            <th class="px-3 py-3 font-medium">Type</th>
+            <th class="px-3 py-3 font-medium">Category / Type</th>
+            <th class="px-3 py-3 font-medium">Price</th>
             <th class="px-3 py-3 font-medium">Availability</th>
             <th class="px-3 py-3 font-medium">Time Zone</th>
             <th class="px-3 py-3 font-medium">Quick Check</th>
@@ -2677,7 +2682,14 @@ function selectSlot(resource, date, hour) {
             <td class="px-3 py-3 font-medium text-slate-900">
               {{ resource.resource_name || resource.name }}
             </td>
-            <td class="px-3 py-3">{{ resource.resource_type || '—' }}</td>
+            <td class="px-3 py-3">
+              <span class="block font-medium">{{ resource.resource_category || 'Other' }}</span>
+              <span class="block text-xs text-slate-500">{{ resource.resource_type || '—' }}</span>
+            </td>
+            <td class="px-3 py-3">
+              <span v-if="resource.pricing_model === 'Hourly'">{{ formatCurrency(resource.hourly_rate) }}/hour</span>
+              <span v-else>{{ formatCurrency(resource.fixed_price) }} fixed</span>
+            </td>
             <td class="px-3 py-3">
               {{ resource.available ? 'Available' : 'Unavailable' }}
             </td>
