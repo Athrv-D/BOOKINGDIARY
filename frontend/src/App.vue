@@ -2568,7 +2568,7 @@ function selectSlot(resource, date, hour) {
                     :key="booking.id"
                     @click="openBooking(booking)"
                     class="mb-1 block w-full truncate rounded px-1.5 py-1 text-left text-[10px] font-semibold"
-                    :class="booking.status === 'Pending' ? 'bg-amber-50 text-amber-800' : booking.color === 'violet' ? 'bg-violet-50 text-violet-800' : booking.color === 'emerald' ? 'bg-emerald-50 text-emerald-800' : 'bg-blue-50 text-blue-800'"
+                    :class="booking.status === 'Pending' ? 'bg-amber-50 text-amber-800' : booking.status === 'Completed' ? 'bg-emerald-50 text-emerald-800' : booking.status === 'No Show' ? 'bg-slate-100 text-slate-700' : booking.status === 'Cancelled' ? 'bg-rose-50 text-rose-800' : 'bg-blue-50 text-blue-800'"
                   >{{ booking.start }} {{ booking.title }}</button>
                   <button v-if="bookingsOn(day).length > 3" @click="selectDay(day)" class="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800">+{{ bookingsOn(day).length - 3 }} more</button>
                 </div>
@@ -2610,7 +2610,11 @@ function selectSlot(resource, date, hour) {
     ? 'border-l-amber-400 bg-amber-50/80'
     : booking.status === 'Cancelled'
       ? 'border-l-rose-400 bg-rose-50/80'
-      : 'border-l-indigo-500 bg-white'"
+      : booking.status === 'Completed'
+        ? 'border-l-emerald-500 bg-emerald-50/50'
+        : booking.status === 'No Show'
+          ? 'border-l-slate-400 bg-slate-50'
+          : 'border-l-indigo-500 bg-white'"
 >
   <div class="flex items-center justify-between gap-1">
     <span
@@ -2619,7 +2623,11 @@ function selectSlot(resource, date, hour) {
         ? 'text-amber-800'
         : booking.status === 'Cancelled'
           ? 'text-rose-800'
-          : 'text-indigo-700'"
+          : booking.status === 'Completed'
+            ? 'text-emerald-800'
+            : booking.status === 'No Show'
+              ? 'text-slate-700'
+              : 'text-indigo-700'"
     >
       {{ timeLabel(booking.start) }}–{{ timeLabel(booking.end) }}
     </span>
@@ -2629,9 +2637,13 @@ function selectSlot(resource, date, hour) {
         ? 'bg-amber-100 text-amber-800'
         : booking.status === 'Cancelled'
           ? 'bg-rose-100 text-rose-800'
-          : 'bg-indigo-100 text-indigo-700'"
+          : booking.status === 'Completed'
+            ? 'bg-emerald-100 text-emerald-800'
+            : booking.status === 'No Show'
+              ? 'bg-slate-200 text-slate-700'
+              : 'bg-indigo-100 text-indigo-700'"
     >
-      {{ booking.status === 'Pending' ? 'Pending' : booking.status === 'Cancelled' ? 'Cancelled' : 'Booked' }}
+      {{ booking.status === 'Pending' ? 'Pending confirmation' : booking.status === 'Cancelled' ? 'Cancelled' : booking.status === 'Completed' ? 'Completed' : booking.status === 'No Show' ? 'No show' : booking.status === 'Confirmed' ? 'Confirmed' : booking.status }}
     </span>
   </div>
 
@@ -2678,7 +2690,7 @@ function selectSlot(resource, date, hour) {
           <span v-if="blackoutResourcesOn(selectedDate).some(item => item.name === resource.name)" class="mt-2 inline-flex rounded bg-rose-100 px-2 py-1 text-[10px] font-semibold text-rose-700">Blackout</span>
         </div>
         <div class="space-y-2">
-          <button v-for="booking in bookingsForResource(resource.name, selectedDate)" :key="booking.id" @click="openBooking(booking)" class="flex w-full items-start gap-3 rounded-lg border p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40" :class="booking.status === 'Pending' ? 'border-amber-200 bg-amber-50/60' : booking.status === 'Cancelled' ? 'border-rose-200 bg-rose-50/60' : 'border-slate-200 bg-white'">
+          <button v-for="booking in bookingsForResource(resource.name, selectedDate)" :key="booking.id" @click="openBooking(booking)" class="flex w-full items-start gap-3 rounded-lg border p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40" :class="booking.status === 'Pending' ? 'border-amber-200 bg-amber-50/60' : booking.status === 'Cancelled' ? 'border-rose-200 bg-rose-50/60' : booking.status === 'Completed' ? 'border-emerald-200 bg-emerald-50/60' : booking.status === 'No Show' ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'">
             <span class="min-w-[108px] text-xs font-bold tabular-nums text-slate-700">{{ timeLabel(booking.start) }}–{{ timeLabel(booking.end) }}</span>
             <span class="min-w-0 flex-1">
               <span class="block truncate text-sm font-semibold text-slate-800">{{ booking.title || 'Untitled booking' }}</span>
