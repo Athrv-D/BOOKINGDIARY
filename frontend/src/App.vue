@@ -21,6 +21,7 @@ import {
   createBlackoutDate,
   getCurrentUserRoles,
   getCurrentUser,
+  getCustomerOptions,
   validateGroupBooking,
   cancelBooking,
   getOverviewBookings,
@@ -587,6 +588,7 @@ onMounted(async () => {
   }
 
   await loadResources()
+  await loadCustomerOptions()
   await loadSchedule()
   await loadOverview()
 })
@@ -1061,6 +1063,15 @@ async function createBooking() {
   }
 }
 
+const customerOptions = ref({ customers: [], contacts: [] })
+async function loadCustomerOptions() {
+  try {
+    customerOptions.value = await getCustomerOptions()
+  } catch (error) {
+    console.warn('Customer and contact lookup is unavailable:', error)
+  }
+}
+
 const bookingFormOpen = ref(false)
 
 const formAvailability = ref({ loading: false, error: '', schedules: [] })
@@ -1111,6 +1122,10 @@ const bookingForm = ref({
   bookingType: 'Single Slot',
   repeatUntil: '',
   customer: '',
+  customerRecord: '',
+  contact: '',
+  customerPhone: '',
+  customerEmail: '',
   remarks: '',
   attendeeCount: 1,
   bookingQuantity: 1,
@@ -1203,6 +1218,10 @@ function openNewBooking(resource = null) {
     bookingType: 'Single Slot',
     repeatUntil: '',
     customer: '',
+    customerRecord: '',
+    contact: '',
+    customerPhone: '',
+    customerEmail: '',
     remarks: '',
     attendeeCount: 1,
     bookingQuantity: 1,
@@ -1341,6 +1360,10 @@ async function submitManualBooking() {
         ? form.repeatUntil
         : null,
       customer: form.customer.trim(),
+      customerRecord: form.customerRecord || '',
+      contact: form.contact || '',
+      customerPhone: form.customerPhone.trim(),
+      customerEmail: form.customerEmail.trim(),
       remarks: form.remarks.trim(),
       attendeeCount: form.attendeeCount,
       bookingQuantity: form.bookingQuantity,
@@ -1841,6 +1864,32 @@ function selectSlot(resource, date, hour) {
         placeholder="Optional"
         class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2"
       />
+    </label>
+
+    <label class="block text-sm font-medium text-slate-700">
+      Link Customer record
+      <select v-model="bookingForm.customerRecord" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
+        <option value="">No linked customer</option>
+        <option v-for="customer in customerOptions.customers" :key="customer.name" :value="customer.name">{{ customer.customer_name || customer.name }}</option>
+      </select>
+    </label>
+
+    <label class="block text-sm font-medium text-slate-700">
+      Contact
+      <select v-model="bookingForm.contact" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
+        <option value="">No linked contact</option>
+        <option v-for="contact in customerOptions.contacts" :key="contact.name" :value="contact.name">{{ [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.name }}{{ contact.email_id ? ' — ' + contact.email_id : '' }}</option>
+      </select>
+    </label>
+
+    <label class="block text-sm font-medium text-slate-700">
+      Phone
+      <input v-model="bookingForm.customerPhone" type="tel" maxlength="40" placeholder="Walk-in phone number" class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2" />
+    </label>
+
+    <label class="block text-sm font-medium text-slate-700">
+      Email
+      <input v-model="bookingForm.customerEmail" type="email" maxlength="140" placeholder="Walk-in email address" class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2" />
     </label>
 
     <label class="block text-sm font-medium text-slate-700 md:col-span-2">
