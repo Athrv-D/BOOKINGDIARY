@@ -78,7 +78,10 @@ def send_booking_reminders():
             continue
 
         for offset_minutes, offset_label in REMINDER_OFFSETS:
-            if remaining_seconds <= offset_minutes * 60:
+            # The scheduler runs every 15 minutes. A bounded window prevents
+            # both reminders from firing together and avoids repeated sends.
+            window_seconds = 15 * 60
+            if (offset_minutes - 15) * 60 < remaining_seconds <= offset_minutes * 60:
                 _send_one_booking_reminder(
                     booking, occurrence_date, offset_minutes, offset_label,
                     resource_timezone,
@@ -106,7 +109,7 @@ def _send_one_booking_reminder(
         })
         reminder_log.insert(ignore_permissions=True)
 
-    subject = f"Booking reminder: {booking.booking_id or booking.name}"
+    subject = f"Booking reminder ({offset_label}): {booking.booking_id or booking.name}"
     customer_name = booking.customer or "there"
     resource_name = booking.resource
     date_label = frappe.utils.formatdate(occurrence_date)
