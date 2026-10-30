@@ -80,7 +80,6 @@ def send_booking_reminders():
         for offset_minutes, offset_label in REMINDER_OFFSETS:
             # The scheduler runs every 15 minutes. A bounded window prevents
             # both reminders from firing together and avoids repeated sends.
-            window_seconds = 15 * 60
             if (offset_minutes - 15) * 60 < remaining_seconds <= offset_minutes * 60:
                 _send_one_booking_reminder(
                     booking, occurrence_date, offset_minutes, offset_label,
