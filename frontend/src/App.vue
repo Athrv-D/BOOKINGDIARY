@@ -1669,7 +1669,7 @@ function selectSlot(resource, date, hour) {
     @click.self="selectedBooking = null"
   >
     <div
-      class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
+      class="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-2xl bg-white p-6 shadow-2xl"
       role="dialog"
       aria-modal="true"
       aria-labelledby="booking-details-title"
@@ -3192,7 +3192,7 @@ function selectSlot(resource, date, hour) {
       </div>
 
       <div v-if="blackoutModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" @click.self="blackoutModalOpen = false">
-        <section role="dialog" aria-modal="true" aria-labelledby="blackout-title" class="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl">
+        <section role="dialog" aria-modal="true" aria-labelledby="blackout-title" class="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
           <div class="flex items-start justify-between border-b border-slate-100 bg-gradient-to-r from-rose-50 via-white to-white p-5">
             <div class="flex items-start gap-3">
               <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-600 text-lg text-white shadow-sm shadow-rose-200" aria-hidden="true">⛔</span>
@@ -3204,7 +3204,7 @@ function selectSlot(resource, date, hour) {
             </div>
             <button type="button" aria-label="Close" @click="blackoutModalOpen = false" class="rounded-lg px-2 py-1 text-xl text-slate-400 hover:bg-slate-100">×</button>
           </div>
-          <form class="space-y-4 p-5" @submit.prevent="saveBlackoutDate">
+          <form class="min-h-0 space-y-4 overflow-y-auto overscroll-contain p-5" @submit.prevent="saveBlackoutDate">
             <label class="block">
               <span class="mb-1.5 block text-sm font-semibold text-slate-700">Date</span>
               <input v-model="blackoutForm.blackout_date" type="date" required class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
