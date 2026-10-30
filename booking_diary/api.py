@@ -701,3 +701,44 @@ def get_customer_options():
             order_by="first_name asc", page_length=500,
         )
     return {"customers": customers, "contacts": contacts}
+
+
+
+@frappe.whitelist()
+def get_my_reminders():
+    """Return recent in-app booking reminders for the logged-in user."""
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in to view reminders.")
+
+    return frappe.get_all(
+        "Notification Log",
+        filters={
+            "for_user": frappe.session.user,
+            "document_type": "Booking Diary",
+        },
+        fields=[
+            "name", "subject", "email_content", "document_name",
+            "read", "creation",
+        ],
+        order_by="creation desc",
+        limit_page_length=50,
+    )
+
+
+@frappe.whitelist()
+def mark_reminder_read(notification_name):
+    """Mark a notification as read only for its intended recipient."""
+    if frappe.session.user == "Guest":
+        frappe.throw("Please log in to update reminders.")
+
+    owner = frappe.db.get_value(
+        "Notification Log", notification_name, "for_user"
+    )
+    if owner != frappe.session.user:
+        frappe.throw("You cannot update another user's notification.")
+
+    frappe.db.set_value(
+        "Notification Log", notification_name, "read", 1,
+        update_modified=False,
+    )
+    return {"name": notification_name, "read": 1}

@@ -1,0 +1,101 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-30 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "booking",
+  "occurrence_date",
+  "reminder_offset",
+  "dedupe_key",
+  "email_status",
+  "email_sent_on",
+  "in_app_sent",
+  "last_error"
+ ],
+ "fields": [
+  {
+   "fieldname": "booking",
+   "fieldtype": "Link",
+   "label": "Booking",
+   "options": "Booking Diary",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "occurrence_date",
+   "fieldtype": "Date",
+   "label": "Booking Occurrence",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "reminder_offset",
+   "fieldtype": "Data",
+   "label": "Reminder Timing",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "dedupe_key",
+   "fieldtype": "Data",
+   "label": "Deduplication Key",
+   "reqd": 1,
+   "unique": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "email_status",
+   "fieldtype": "Select",
+   "label": "Email Status",
+   "options": "Pending\nQueued\nFailed\nSkipped",
+   "default": "Pending",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "email_sent_on",
+   "fieldtype": "Datetime",
+   "label": "Email Queued On"
+  },
+  {
+   "fieldname": "in_app_sent",
+   "fieldtype": "Check",
+   "label": "In-App Notification Created",
+   "default": "0"
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Long Text",
+   "label": "Last Delivery Error"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-30 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Booking Diary",
+ "name": "Booking Reminder Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "read": 1,
+   "role": "Booking Manager",
+   "write": 0
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

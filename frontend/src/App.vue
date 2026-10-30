@@ -29,6 +29,8 @@ import {
   updateManagedBooking,
   rescheduleCustomerBooking,
   getBookingAuditTrail,
+  getMyReminders,
+  markReminderRead,
 } from './api'
 
 const activeView = ref('Overview')
@@ -111,6 +113,37 @@ function exportBookingReport() {
 const overviewRecords = ref([])
 const overviewLoading = ref(false)
 const overviewError = ref('')
+const reminderRecords = ref([])
+const reminderLoading = ref(false)
+const reminderError = ref('')
+const unreadReminderCount = computed(() => reminderRecords.value.filter(item => !item.read).length)
+
+async function loadReminders() {
+  reminderLoading.value = true
+  reminderError.value = ''
+  try {
+    reminderRecords.value = await getMyReminders()
+  } catch (error) {
+    reminderError.value = error.message || 'Could not load notifications.'
+  } finally {
+    reminderLoading.value = false
+  }
+}
+
+async function openReminder(reminder) {
+  if (!reminder.read) {
+    try {
+      await markReminderRead(reminder.name)
+      reminder.read = 1
+    } catch (error) {
+      reminderError.value = error.message || 'Could not mark notification as read.'
+    }
+  }
+  if (reminder.document_name) {
+    await openBooking({ docName: reminder.document_name })
+  }
+}
+
 const overviewToday = computed(() => dateKey(new Date()))
 const overviewTodayBookings = computed(() => overviewRecords.value.filter(b => b.booking_date === overviewToday.value && b.status !== 'Cancelled'))
 const overviewPending = computed(() => overviewRecords.value.filter(b => b.status === 'Pending').slice(0, 8))
@@ -682,6 +715,7 @@ onMounted(async () => {
   await loadCustomerOptions()
   await loadSchedule()
   await loadOverview()
+  await loadReminders()
 })
 
 
@@ -2480,6 +2514,29 @@ function selectSlot(resource, date, hour) {
           <button type="button" @click="loadOverview" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Refresh</button>
         </div>
         <p v-if="overviewError" class="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{{ overviewError }}</p>
+        <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5">
+            <div>
+              <h3 class="font-bold text-slate-900">Notifications <span v-if="unreadReminderCount" class="ml-1 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">{{ unreadReminderCount }} new</span></h3>
+              <p class="mt-1 text-xs text-slate-500">Booking reminders and updates for your account.</p>
+            </div>
+            <button type="button" @click="loadReminders" :disabled="reminderLoading" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">{{ reminderLoading ? 'Refreshing…' : 'Refresh notifications' }}</button>
+          </div>
+          <p v-if="reminderError" class="m-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{{ reminderError }}</p>
+          <p v-else-if="reminderLoading && !reminderRecords.length" class="p-5 text-sm text-slate-500">Loading notifications…</p>
+          <p v-else-if="!reminderRecords.length" class="p-5 text-sm text-slate-500">You're all caught up. Booking reminders will appear here.</p>
+          <div v-else class="divide-y divide-slate-100">
+            <button v-for="reminder in reminderRecords" :key="reminder.name" type="button" @click="openReminder(reminder)" class="flex w-full items-start gap-3 p-4 text-left transition hover:bg-slate-50" :class="reminder.read ? 'bg-white' : 'bg-indigo-50/40'">
+              <span class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" :class="reminder.read ? 'bg-slate-200' : 'bg-indigo-600'"></span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-sm font-semibold text-slate-800">{{ reminder.subject }}</span>
+                <span class="mt-1 block text-xs text-slate-500">{{ reminder.creation }}</span>
+                <span class="mt-2 block text-xs leading-5 text-slate-600" v-html="reminder.email_content"></span>
+              </span>
+              <span class="shrink-0 text-xs font-semibold text-indigo-600">{{ reminder.read ? 'View' : 'Mark read' }}</span>
+            </button>
+          </div>
+        </section>
         <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><p class="text-sm text-slate-500">{{ isBookingManager ? "Today's bookings (all users)" : "My bookings today" }}</p><p class="mt-2 text-3xl font-bold text-slate-900">{{ overviewTodayBookings.length }}</p></div>
           <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><p class="text-sm text-slate-500">{{ isBookingManager ? 'Pending confirmations' : 'My pending bookings' }}</p><p class="mt-2 text-3xl font-bold text-amber-600">{{ overviewRecords.filter(b => b.status === 'Pending').length }}</p></div>

@@ -422,3 +422,14 @@ export async function getBookingReport(startDate, endDate) {
     end_date: endDate,
   })
 }
+
+
+export async function getMyReminders() {
+  return frappeGet('booking_diary.api.get_my_reminders')
+}
+
+export async function markReminderRead(name) {
+  return frappePost('booking_diary.api.mark_reminder_read', {
+    notification_name: name,
+  })
+}

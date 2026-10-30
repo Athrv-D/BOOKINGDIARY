@@ -158,6 +158,11 @@ scheduler_events = {
     "hourly": [
         "booking_diary.tasks.complete_elapsed_bookings"
     ],
+    "cron": {
+        "*/15 * * * *": [
+            "booking_diary.tasks.send_booking_reminders"
+        ]
+    },
 }
 
 # scheduler_events = {
